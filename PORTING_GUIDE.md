@@ -73,11 +73,12 @@ The Xbox game expects a 32 bit address space of its own; guest address = `base +
 | Problem | Fix |
 |---|---|
 | `std::thread::detach` throws "Function not implemented" | provide newlib's `pthread_detach` hook, which libnx leaves out |
-| every thread lands on core 0 | deal threads round robin over cores 0 to 2; core 3 is the system's and does not time-slice the default priority |
+| every thread lands on core 0 | every thread prefers core 0 and may run on cores 0 to 2 (core 3 is the system's and does not time-slice the default priority); the thread that presents takes core 2 for its own and the render thread core 1, both at 0x2B (`port::TakeCore`). Dealt round robin, the two often shared a core while another stood idle |
 | the process may hold ~96 kernel threads, ended detached threads keep theirs | close ended detached threads yourself (`threadCreate`/`threadClose` wrapped) |
 | SDL's audio "TIME_CRITICAL" becomes 0x3B on the Switch (time-sliced), audio crackles | wrap `SDL_SYS_SetThreadPriority`: TIME_CRITICAL → **0x2B** (as burnout3-sw) |
 | guest threads need big stacks | 16 MB per guest thread (as nfsu2-sw), `SCDA_STACK_MB` overrides it |
-| the CPU is too slow | raise only the CPU clock: the FastLoad boost drops the GPU to 76.8 MHz |
+| clocks | set them one by one through `clkrst` (the FastLoad boost drops the GPU to 76.8 MHz): Nintendo's official ones (CPU 1020, GPU 384 handheld / 768 docked, memory 1331 / 1600 MHz) with a CPU setting up to 1785. The system puts its own back on docking, after the HOME menu and sleep: set them again on a mode change and from an applet hook (`AppletHookType_OnFocusState`, `OnResume`, ...), never by watching the clocks, so an overclocking tool (sys-clk, Horizon OC) keeps its own. The game's own code limits the frame rate, so the CPU clock is what buys frames |
+| waiting wakes a core for nothing | sleep in one go and let a wait that is not alertable wake once a second at most (APCs need the short slices only when alertable); in SCDA 2 ms sleep slices and 50 ms wait wake-ups woke the cores ~1,400 times a second |
 
 ---
 
@@ -92,6 +93,10 @@ Each of these cost a crash or an empty file on the Switch's SD card:
 - New file sizes through `ftruncate`; log short reads and writes.
 - Open read-only where only reading.
 - **`fsync` the log on every flush**, or it is empty after a hang.
+- **Seek only when the stream stands elsewhere.** An `fseek` empties newlib's buffer: one before every `NtReadFile`
+  and `NtWriteFile` sent each of the title's writes to the card on its own. Seek again after a write when reading,
+  after a size query, and after a truncation; flush the other open streams of a file before opening it again, and
+  every open file in `HalReturnToFirmware` (the process ends without flushing).
 
 ---
 
@@ -134,6 +139,23 @@ the same worked here.
 - NOOVERWRITE locks get the newest finished copy from a ring of mapped read-back buffers: a synchronous read-back
   each frame held the Switch at 8 fps.
 - Shared parts in `gpu_common.cpp` (constants, shader keys, present pass), so GL and Vulkan do not drift apart.
+- **NOOVERWRITE, done right:** a surface locked in the last ~1800 presents (small ones) gets a copy every present,
+  and `DeliverLate` asks the copy's fence itself (each slot keeps its command buffer's `VkFence`). Copies made only
+  at a lock, and seen finished only at the next present, left every lock waiting while a level starts (25 ms each).
+- **Render scale** (`app::RenderScale`): every target but the shadow map at the scale; what reads or writes guest
+  memory (read-backs, NOOVERWRITE copies, CPU uploads) goes through a scratch image at the console's size, and
+  CopyRects blits with each target's own scale. **Set the scale at `Init`**, before any target: applied at the first
+  present it made every target new and black, and the loading screen after a relaunch (a picture the CPU wrote once)
+  flickered black. A later change rescales each target with its picture blitted over. The GPU idled at 640x480 on the
+  Switch, so 960x720 cost little; SMAA and anisotropic filtering cost more.
+- **The hand-over to the render thread** compared ~6 KB of state per draw (a tenth of the game's thread): compare 16
+  bytes at a time (NEON on ARM, SSE on x86), and mark writes instead of comparing where the writers are few. The
+  vertex shader constants mark the registers set (`MarkVsc`), the transforms count their writes; two check builds
+  that compared all the same and counted the changes a mark missed (0 in millions) came before anything went
+  uncompared.
+- **No heap calls per draw**: the vertex input descriptions were two vectors a draw, 100,000 heap calls a second on
+  newlib's one lock, which the game's thread waits on too. Fixed arrays of 16.
+- NVK has no memory type that is host cached **and** coherent: asking for one first is no shortage; say nothing.
 
 ### Traps found with GL that hold for any API
 - Vertex uploads must reach the **highest vertex a draw reads**, zeros past it: Mesa reads beyond and crashes.
@@ -153,8 +175,9 @@ The mix (DirectSound emulation, ADPCM, HRTF, reverb) is the same on every platfo
 matters (`sdl_audio.cpp`):
 
 - 5.1 → stereo fold scaled by `1/(1+0.707)`, then a **limiter** with 2 ms look-ahead instead of a hard clamp.
-- An own pump thread renders 10 ms buffers into `SDL_QueueAudio`, at least 50 ms deep, at TIME_CRITICAL (→ 0x2B by
-  the wrap).
+- An own pump thread renders 10 ms buffers (`audio::kBlockFrames`) into `SDL_QueueAudio` at TIME_CRITICAL (→ 0x2B
+  by the wrap), **a block every 10 ms by the clock**, a few blocks ahead. Rendering as fast as the queue emptied gave
+  bursts of four blocks each time SDL's Switch driver took its 2,048 frames (43 ms).
 - **The trap that mattered: SDL's Switch driver.** devkitPro's `SDL_switchaudio.c` plays only **two** wave buffers
   and notices one finishing only every 5 ms (`audrenWaitFrame`). At `samples = 512` that left ~5 ms to refill; when
   that was missed the gap sounded like **hard clipping** on steady bass (ambience, menu sounds). The queue in front
@@ -167,6 +190,22 @@ matters (`sdl_audio.cpp`):
     and sample jumps with numpy. Here the mix was clean (peak ~0.06 in the menu), so the problem was behind it.
   - Every 10 s the output logs "audio: the mix peaked at …" when the limiter acted; seen often, the mix is too hot.
 - Should 2048 not be enough: bypass SDL and play through libnx's `audout` with more buffers.
+- **Music through a short looping buffer.** SCDA streams its music into a 48 ms looping stereo buffer it refills from
+  the write cursor `GetCurrentPosition` gives (speech and ambience are streams of packets and were fine). Two traps
+  made the music sound doubled, a little behind itself, and clicking:
+  1. the write cursor stood 256 frames past the play cursor, inside the 480 the mixer reads at a time, so each block
+     ended with the data of one loop before: put it past a whole mixer block at the voice's rate (`WriteLead`);
+  2. the bursts above ran the play cursor 40 ms through a buffer the game can write 36 ms of ahead: pace the mixer by
+     the clock.
+  Music only, in the menu and in game, and speech clean: think of looping buffers first.
+- **Measure the mix, do not guess it.** `audio_dump = true` in `scda.toml` writes the fold to `logs/audio.f32` (raw
+  float, 48 kHz, interleaved). With numpy: the autocorrelation shows a delayed copy as a narrow peak at its delay,
+  and clicks (sample steps far above the local mean step) taken modulo the mixer block (480) and the looping
+  buffer's length show where they come from. The clicks went from ~90 to 2 in 20 s, and the 6 s period of the rest
+  pointed at something outside the mixer.
+- With `logging = true`, `dsound: playing` lines list every stream and stereo buffer once a second with its level,
+  mix bins and position, and stream starts list the streams already playing. Stereo voices alternate their slots
+  between the two channels; mapping speaker bins by side instead made the menu's music worse, so that stays.
 
 ---
 
@@ -201,7 +240,17 @@ kind, and an "alive" every 10 s.
 ## 8. Input and the rest
 
 - **No SDL text input**: it opens the system keyboard.
-- 720p by default (native in handheld mode).
+- 720p by default (native in handheld mode). Changing between 720p and 1080p: `nwindowSetDimensions` works only while
+  the window holds no buffers, so destroy the swap chain first; compare against the size asked for, not the one
+  made, or the swap chain is rebuilt every frame and the picture flickers.
+- **Sticks:** Xbox games cut a dead zone off each stick axis (0.3 here), made for sticks that reach both ends on a
+  diagonal. The Switch's round sticks give 0.71 on each at 45° and the camera turned slowly in between: give the
+  right stick a round dead zone, stretch the circle to the square, and lift each axis past the game's dead zone.
+- **Gyro:** libnx's six-axis sensors (`hidGetSixAxisSensorStates`), Nintendo's axes (x right, y forward, z up) to
+  SDL's as (x, z, −y); left and right came out turned the wrong way, so an "invert gyro X" defaults on. A calibration
+  that waits for the controller to lie still must read the sensors in the menu too and give up after a few seconds,
+  or the gyro stays dead.
+- The A/B and X/Y swap for the Switch's layout, and settings that do nothing on the Switch hidden.
 - Errors before the game starts go to the **error applet**, so the player sees why nothing starts.
 
 ---
@@ -218,7 +267,43 @@ kind, and an "alive" every 10 s.
 
 ---
 
-## 10. Checklist for the next game
+## 10. Performance and battery: measure first (`profiling = true`)
+
+`profiling = true` in `scda.toml` (apart from `logging`) writes a lean `logs/scda.log` of measurements alone (full
+logging writes every file opened and slows the very thread measured) and `logs/profile.txt`
+(`switch_profile.cpp`). Every 10 s:
+
+- **Threads and cores**: each named thread's share of a core and its preferred core (`svcGetInfo`
+  `InfoType_ThreadTickCount` on its handle); sums per core over 100% mean threads compete.
+- **A sampling profiler** on the three busiest threads, ~500 times a second: `svcSetThreadActivity` pauses the
+  thread, `svcGetThreadContext3` reads it, it runs on. Offsets from the module base (`svcQueryMemory` on a function
+  of your own; `__start__` reads 0) resolve against the build's `scda.elf` with `nm`/`addr2line`, so keep the ELF of
+  every build you measure. **A thread blocked in a system call reports the `svc` itself as its PC**: for such samples
+  the return addresses on its stack (bl/blr targets, within its stack region) show who called, up to the emulated
+  kernel's functions.
+- **Files**: opens, misses, queries, reads and writes by Xbox path, the busiest first. In SCDA they showed that file
+  IO costs at loading and saving (language files opened hundreds of times, a save written in 4 KB pieces), not in
+  play (~150 KB/s of streamed ambience).
+- **Heap**: `malloc`, `calloc`, `realloc` and `memalign` wrapped at link time, every call counted and one in 32
+  sampled with its stack, in a fixed table (the counting may not allocate); and `mallinfo` against libnx's heap
+  (`fake_heap_start`/`end`). The system's own figure counts the whole heap as used from the start. SCDA used ~800 MB
+  of a 3.2 GB heap in a level.
+- **Waiting**: Sleep(0) yields, polls, wake-ups of waits, sleep slices, stalls and the frame cap's spin.
+- **Battery**: `psmGetRawBatteryChargePercentage` to a thousandth of a percent, as % an hour over the window and the
+  run; a few minutes unplugged compare two builds (the Switch gives no current).
+
+**The method that worked:** one fixed spot (a quicksave in a busy place), stand still 60 s, compare the 10 s frame
+time lines between builds; change one thing at a time; and for anything that skips work (comparing state, say),
+first a check build that does it all the same and counts what the shortcut would miss.
+
+**What it found in SCDA** (handheld, 1785 MHz): 42.7 → 40.2 ms a frame. The game's thread is the limit, ~65% of it
+recompiled code with a flat profile; `-O3` for the game code gave 3.4% (`SCDA_CODE_OPT`, `-O2` to compare; LTO is
+built but not measured). The GPU waited 0%. Battery: waking the cores less changed nothing where the game cannot hold
+its frame rate; the clocks, the screen and the GPU drain it (~25% an hour).
+
+---
+
+## 11. Checklist for the next game
 
 - [ ] `tools/regen.sh` with the new XBE and a recompiler config; the Linux build with `SCDA_GPU=null` boots
 - [ ] paths, NRO name, title ID and the relaunch target per XBE in `switch_platform.cpp`
@@ -229,6 +314,14 @@ kind, and an "alive" every 10 s.
 - [ ] relaunch menu → mission → menu at least twice in a row (the leaks show from the third run on)
 - [ ] saves: write → restart the game → load (the "second open" trap)
 - [ ] game specific patches (skipped intros, HUD, split screen) go into `src/game/`, not the port
+- [ ] music: listen in the menu and in play for doubling or clicks (looping buffers: write cursor, mixer pacing);
+      check with `audio_dump`
+- [ ] `profiling = true` at a fixed spot early: which thread limits, on which core, what it waits for
+- [ ] clocks set again after the HOME menu and sleep; the right stick's dead zone round
+- [ ] commit messages in Conventional Commits form, reverts too (`fix(scope): back to ...`, not git's "Revert ..."):
+      the CI checks every commit pushed
 
 **What saves time next time:** skip GL and start with NVK, take the relaunch logic from here as it is, and set the
-audio buffer size right from the start. Those were the three longest detours here.
+audio buffer size, the write cursor and the mixer's pacing right from the start. Those were the longest detours
+here. For performance, build the profiler before guessing: in SCDA the first guess (thread placement) gave little,
+and the measured ones (state hand-over, heap calls, `-O3`) gave the rest.
