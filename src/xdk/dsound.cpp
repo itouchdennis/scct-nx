@@ -1014,13 +1014,31 @@ BUFFER(SetBufferData, 3) {
     v.block = -1;
     return 0;
 }
+// music sized buffers (a few seconds and up): how the title starts, stops and places them, and where the others
+// stood, to tell how it lines its music tracks up (DSBPLAY_SYNCHPLAYBACK is 4)
+constexpr uint32_t kMusicBytes = 256u << 10;
+void LogMusic(const char* what, Voice& v, uint32_t arg) {
+    if (v.bytes < kMusicBytes) return;
+    char others[256] = "";
+    int at = 0;
+    for (auto& [obj, o] : g_voices) {
+        if (&o == &v || !o.playing || o.bytes < kMusicBytes || at > int(sizeof(others)) - 40) continue;
+        at += std::snprintf(others + at, sizeof(others) - size_t(at), " %08X@%u", obj, uint32_t(o.pos));
+    }
+    LOG_FIRST(400, "dsound: music %s %08X (%u bytes, %u Hz, %u ch, tag %X) arg %X, at frame %u%s; playing:%s", what,
+              v.obj, v.bytes, v.rate, v.channels, v.tag, arg, uint32_t(v.pos), v.playing ? " playing" : "",
+              at ? others : " none");
+}
+
 BUFFER(Play, 4) {
+    LogMusic("play", v, a[3]);
     v.playing = true;
     v.looping = a[3] & 1;
     if (a[3] & 2) v.pos = 0;
     return 0;
 }
 BUFFER(Stop, 1) {
+    LogMusic("stop", v, 0);
     v.playing = false;
     return 0;
 }
@@ -1041,6 +1059,7 @@ BUFFER(GetCurrentPosition, 3) {
     return 0;
 }
 BUFFER(SetCurrentPosition, 2) {
+    LogMusic("seek", v, a[1]);
     v.pos = FramesOf(v, a[1]);
     return 0;
 }
@@ -1195,6 +1214,16 @@ STREAM(Process, 3) {
     Packet pk{R32(in), R32(in + 4), R32(in + 8), R32(in + 12), R32(in + 16)};
     if (pk.completed_ptr) W32(pk.completed_ptr, 0);
     if (pk.status_ptr) W32(pk.status_ptr, kPacketPending);
+    if (!v.active) {
+        // a stream starting: which others play, and how far into their packets they are
+        char others[256] = "";
+        int at = 0;
+        for (auto& [obj, o] : g_voices)
+            if (&o != &v && o.stream && o.active && at < int(sizeof(others)) - 40)
+                at += std::snprintf(others + at, sizeof(others) - size_t(at), " %08X@%u", obj, uint32_t(o.pos));
+        LOG_FIRST(400, "dsound: stream start %08X (%u Hz, %u ch, tag %X, %u byte packets, %u at most); active:%s",
+                  v.obj, v.rate, v.channels, v.tag, pk.size, v.max_packets, at ? others : " none");
+    }
     v.packets.push_back(pk);
     v.last_size = pk.size;
     if (v.tag == 0x69 && pk.size % (36u * v.channels))
