@@ -730,6 +730,32 @@ void AddCrosstalk(const float* lanes, float* out, uint32_t frames) {
 }
 
 // the device clips once, after the fold to stereo sums the speakers
+// With logging on, once a second of sound: every stream playing (but the headset's 8 kHz ones) and every music sized
+// buffer, with its level and mix bins, for a few minutes: what plays over what, and how loud
+void LogPlaying(uint32_t frames) {
+    static uint64_t rendered = 0, lines = 0;
+    rendered += frames;
+    if (!logx::Verbose() || rendered < audio::kRate || lines > 4000) return;
+    rendered = 0;
+    for (auto& [obj, v] : g_voices) {
+        bool music_buffer = !v.stream && v.playing && v.bytes >= (256u << 10);
+        bool stream = v.stream && v.active && !v.packets.empty() && v.rate != 8000;
+        if (v.paused || (!music_buffer && !stream)) continue;
+        char bins[160] = "";
+        int at = 0;
+        static const uint8_t kFront[2] = {0, 1};
+        const uint8_t* bin = v.nbins ? v.bin : kFront;
+        for (uint32_t i = 0; i < (v.nbins ? v.nbins : 2u) && at < int(sizeof(bins)) - 16; i++)
+            at += std::snprintf(bins + at, sizeof(bins) - size_t(at), " %u:%d", bin[i], v.bin_mb[bin[i]]);
+        float level = v.volume * v.headroom;
+        LOGI("dsound: playing %s %08X %u Hz %u ch, %.1f dB (volume %.1f, headroom %.1f), bins%s%s, frame %u",
+             v.stream ? "stream" : "buffer", obj, v.rate, v.channels, level > 0 ? 20 * std::log10(level) : -100.0,
+             v.volume > 0 ? 20 * std::log10(v.volume) : -100.0, v.headroom > 0 ? 20 * std::log10(v.headroom) : -100.0,
+             bins, v.is3d ? ", 3D" : "", uint32_t(v.pos));
+        lines++;
+    }
+}
+
 void Render(float* out, uint32_t frames) {
     // the output thread alone renders
     static std::vector<float> lanes;
@@ -743,6 +769,7 @@ void Render(float* out, uint32_t frames) {
     }
     if (app::Get().reverb) g_reverb.Run(send.data(), lanes.data(), frames);
     AddCrosstalk(lanes.data(), out, frames);
+    LogPlaying(frames);
 }
 
 int64_t NowMs() {
