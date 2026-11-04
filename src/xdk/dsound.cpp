@@ -738,7 +738,8 @@ void LogPlaying(uint32_t frames) {
     if (!logx::Verbose() || rendered < audio::kRate || lines > 4000) return;
     rendered = 0;
     for (auto& [obj, v] : g_voices) {
-        bool music_buffer = !v.stream && v.playing && v.bytes >= (256u << 10);
+        // music sized buffers, and every stereo one: the menu's music is a smaller looping buffer
+        bool music_buffer = !v.stream && v.playing && (v.bytes >= (256u << 10) || v.channels >= 2);
         bool stream = v.stream && v.active && !v.packets.empty() && v.rate != 8000;
         if (v.paused || (!music_buffer && !stream)) continue;
         char bins[160] = "";
@@ -748,8 +749,9 @@ void LogPlaying(uint32_t frames) {
         for (uint32_t i = 0; i < (v.nbins ? v.nbins : 2u) && at < int(sizeof(bins)) - 16; i++)
             at += std::snprintf(bins + at, sizeof(bins) - size_t(at), " %u:%d", bin[i], v.bin_mb[bin[i]]);
         float level = v.volume * v.headroom;
-        LOGI("dsound: playing %s %08X %u Hz %u ch, %.1f dB (volume %.1f, headroom %.1f), bins%s%s, frame %u",
-             v.stream ? "stream" : "buffer", obj, v.rate, v.channels, level > 0 ? 20 * std::log10(level) : -100.0,
+        LOGI("dsound: playing %s %08X %u Hz %u ch%s, %.1f dB (volume %.1f, headroom %.1f), bins%s%s, frame %u",
+             v.stream ? "stream" : "buffer", obj, v.rate, v.channels, v.looping ? " looping" : "",
+             level > 0 ? 20 * std::log10(level) : -100.0,
              v.volume > 0 ? 20 * std::log10(v.volume) : -100.0, v.headroom > 0 ? 20 * std::log10(v.headroom) : -100.0,
              bins, v.is3d ? ", 3D" : "", uint32_t(v.pos));
         lines++;
