@@ -245,6 +245,11 @@ Overclocking stays with your own tools, such as [sys-clk](https://github.com/ret
 its clocks again only when the CPU setting changes or the console is docked or taken out, and so does not fight
 them.
 
+### Sound
+- [ ] **A rare click in the music, about every 6 seconds.** The music streams through a 48 ms looping buffer the game
+  refills; the clicks come exactly 6 s apart, likely while the game reads the next piece of the music file from the
+  SD card (about 316 KB at 48 kHz stereo). Measured with `audio_dump = true` (the mix in `logs/audio.f32`).
+
 ### Performance: where it stands, and what is left to try
 Measured on a Switch V1 in handheld mode at 1785 MHz, at a fixed spot (a quicksave in JBA headquarters part 1,
 standing still, 939 draws a frame), with `profiling = true` in `scda.toml`. v0.4.8 brought the frame time from 42.7

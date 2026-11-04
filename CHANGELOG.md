@@ -2,6 +2,24 @@
 There are no prebuilt NROs in any release: each release holds the source and the build scripts. You build the NRO
 yourself, from your own copy of the game ([docs/HOW_TO_BUILD.md](docs/HOW_TO_BUILD.md)).
 
+## v0.4.9
+- **The music sounds clean:** it no longer sounds doubled, a little behind itself, or bouncing, in the main menu and
+  in the mission, and the clicks are gone (about 4 a second before, one in 6 seconds at most now). The game streams
+  its music through a short looping buffer (48 ms) it refills as it plays:
+  - the position it may write from stood inside the 10 ms the mixer reads at a time, so part of each block was the
+    music of one loop before;
+  - the mixer ran in bursts of 40 ms each time the Switch's sound driver took its next 43 ms, past what the game had
+    written; it now moves on with the clock, a block every 10 ms.
+  Speech, ambience and cutscenes, which play another way, were clean before and are unchanged.
+- **Clocks after the HOME menu and sleep:** the port sets its clocks (and *CPU Clock*) again when the game comes back.
+  The system may still put its own back in game; clocks are best set with an overclocking tool's profile (README).
+- **Fewer wake-ups:** waiting threads wake a core about 180 times a second instead of 1,400 (sleeps in one go,
+  waits that only check every 50 ms when they must, a shorter spin in the frame rate cap). The battery drains the
+  same where the game is busy; it is measured in the log with `profiling = true` now.
+- **For measuring:** `audio_dump = true` in `scda.toml` writes the mixed sound to `logs/audio.f32`;
+  `SCDA_CODE_OPT="-O3 -flto=auto"` builds the game code with link time optimization (not the default).
+- README: the to-do list has the measured state of the performance and battery work.
+
 ## v0.4.8
 - **Faster on the Switch, the picture unchanged:** about 6% less frame time at a fixed spot (JBA headquarters part 1,
   standing, 939 draws a frame: 42.7 to 40.2 ms), from measuring where the time goes on the console:
