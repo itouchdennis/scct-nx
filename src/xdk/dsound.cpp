@@ -522,24 +522,18 @@ void Levels(const Voice& v, const Place& at, float g[2][kLanes], float w[2]) {
     // muted speaker bins do not count: such a voice is heard through its effect send
     for (uint32_t s = 0; s < n; s++)
         speakers |= bin[s] < kBinFirstSend && bin[s] != kBinSub && v.bin_mb[bin[s]] > -10000;
-    // The slots alternate between the two channels, but a stereo voice's speaker bins take the channel of their side
-    // (left bins even, right odd), wherever they stand in the list: the action music lists front left, front right,
-    // the centre (muted), back left and back right, and alternating put its right channel on the back left speaker
-    // and its left on the back right, so in stereo each side heard both, the music doubled a little behind itself.
-    for (uint32_t s = 0; s < per && s < n; s++) {
-        uint32_t c = step == 1 ? 0 : s % 2;
-        uint32_t b = bin[s];
-        if (v.channels == 2 && b < kBinFirstSend && b != kBinCentre && b != kBinSub) c = b & 1;
-        if (c >= v.channels) continue;
-        float x = Db(v.bin_mb[b]) * v.volume * v.headroom * BinScale(at, b);
-        if (kSends >> b & 1) {
-            if (at.on) x *= v.room;
-            w[c] += std::ldexp(x, -g_bin_headroom[b]);
-            continue;
+    for (uint32_t c = 0; c < 2; c++)
+        for (uint32_t s = c; c < v.channels && s < per && s < n; s += step) {
+            uint32_t b = bin[s];
+            float x = Db(v.bin_mb[b]) * v.volume * v.headroom * BinScale(at, b);
+            if (kSends >> b & 1) {
+                if (at.on) x *= v.room;
+                w[c] += std::ldexp(x, -g_bin_headroom[b]);
+                continue;
+            }
+            if (speakers && b >= kBinFirstSend) continue;  // other effect sends
+            AddToSpeakers(g[c], b, x, speakers);
         }
-        if (speakers && b >= kBinFirstSend) continue;  // other effect sends
-        AddToSpeakers(g[c], b, x, speakers);
-    }
     // the game can place a sound at NaN, every frame, that voice alone goes silent, where its
     // NaN gain would turn the whole mix to NaN, which plays as silence
     for (int c = 0; c < 2; c++) {
