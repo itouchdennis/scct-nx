@@ -1081,10 +1081,21 @@ BUFFER(GetStatus, 2) {
     W32(a[1], (v.playing ? 1u : 0u) | (v.playing && v.looping ? 4u : 0u));
     return 0;
 }
+// The write cursor: where the title may write next. The mixer reads a whole block at a time ahead of the play cursor
+// (10 ms, audio::kBlockFrames, at the voice's rate), so the write cursor stands past that block, in whole ADPCM
+// blocks: at 256 frames it was inside it. The menu's music streams through a 48 ms looping buffer the title refills
+// from the write cursor, and the 5 ms the mixer read past it still held the data of one loop before: the music
+// sounded doubled, bouncing a little behind itself.
+uint32_t WriteLead(const Voice& v) {
+    double rate = double(v.freq ? v.freq : v.rate);
+    uint32_t block = uint32_t(std::ceil(rate * audio::kBlockFrames / audio::kRate)) + 1;  // +1: interpolation
+    return (block + kAdpcmFrames - 1) / kAdpcmFrames * kAdpcmFrames + kAdpcmFrames;
+}
+
 BUFFER(GetCurrentPosition, 3) {
     uint32_t p = BytesOf(v, uint32_t(v.pos));
     if (a[1]) W32(a[1], p);
-    if (a[2]) W32(a[2], v.bytes ? (p + BytesOf(v, kAdpcmFrames * 4)) % v.bytes : 0);
+    if (a[2]) W32(a[2], v.bytes ? (p + BytesOf(v, WriteLead(v))) % v.bytes : 0);
     return 0;
 }
 BUFFER(SetCurrentPosition, 2) {

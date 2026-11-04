@@ -6,6 +6,8 @@ namespace audio {
 
 constexpr uint32_t kRate = 48000;
 constexpr uint32_t kChannels = 6;
+// frames the outputs have the mixer render at a time: 10 ms
+constexpr uint32_t kBlockFrames = kRate / 100;
 
 // channel order of the frames the mixer renders
 enum Speaker : uint32_t {

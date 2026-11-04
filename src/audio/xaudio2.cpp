@@ -160,7 +160,7 @@ std::optional<Output> Open() {
 
 void Pump(Output& out, const std::function<void(float*, uint32_t)>& render) {
     out.voice->Start();
-    constexpr uint32_t kFrames = kRate / 100;
+    constexpr uint32_t kFrames = kBlockFrames;
     constexpr uint32_t kMinQueued = 3;
     constexpr uint32_t kMaxQueued = 10;
     // one slot more than can be queued, so the one rendered is never one XAudio2 still reads

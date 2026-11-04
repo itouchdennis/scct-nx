@@ -137,7 +137,7 @@ void Pump(std::function<void(float*, uint32_t)> render, SDL_AudioDeviceID dev, i
     // above the busy guest threads, which on the Switch kept it waiting at the default priority until they blocked
     // (voices played drawn out, crackles): time critical is 0x2B there (switch_platform.cpp)
     SDL_SetThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
-    constexpr uint32_t kFrames = kRate / 100;
+    constexpr uint32_t kFrames = kBlockFrames;
     constexpr uint32_t kMinQueued = 5;  // 3 still crackled on the Switch
     constexpr uint32_t kMaxQueued = 10;
     std::vector<float> mix(kFrames * kChannels), out(kFrames * kChannels);
