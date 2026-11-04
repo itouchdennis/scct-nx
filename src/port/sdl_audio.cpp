@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -144,11 +145,22 @@ void Pump(std::function<void(float*, uint32_t)> render, SDL_AudioDeviceID dev, i
     uint32_t depth = kMinQueued;
     const uint32_t buffer = kFrames * uint32_t(channels) * sizeof(float);
     bool stopped = false;
+    // The mixer moves on with the clock, a block every 10 ms, as the console's voices do, not in a burst each time the
+    // device takes a buffer (2048 frames, 43 ms, on the Switch). The game streams its music through a 48 ms looping
+    // buffer it refills from the write cursor: a burst of four blocks ran the play cursor past what it had written,
+    // and the music clicked at the edges of its writes. kPull blocks more ahead cover the device's pulls.
+    using Clock = std::chrono::steady_clock;
+    constexpr uint32_t kPull = 5;
+    constexpr auto kBlock = std::chrono::milliseconds(10);
+    Clock::time_point start = Clock::now();
+    uint64_t rendered = 0;
     SDL_PauseAudioDevice(dev, 0);
     for (uint64_t n = 0;;) {
         if (g_paused != stopped) {
             stopped = !stopped;
             SDL_PauseAudioDevice(dev, stopped);
+            start = Clock::now();  // after a pause the clock starts again, no burst to catch up
+            rendered = 0;
         }
         if (stopped) {
             SDL_Delay(10);
@@ -160,10 +172,20 @@ void Pump(std::function<void(float*, uint32_t)> render, SDL_AudioDeviceID dev, i
             depth++;
             LOGI("audio: output starved, queueing %u ms", depth * 10);
         }
-        if (queued >= depth) {
+        auto since = Clock::now() - start;
+        uint64_t due = uint64_t(since / kBlock) + depth + kPull;
+        if (queued > depth + kPull + 2) {
+            start += kBlock;  // the device plays slower than the clock: the clock waits for it
             SDL_Delay(2);
             continue;
         }
+        if (rendered >= due && queued) {
+            // to the next block's time
+            auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(kBlock - since % kBlock).count();
+            SDL_Delay(uint32_t(std::max<int64_t>(wait, 1)));
+            continue;
+        }
+        rendered++;
         render(mix.data(), kFrames);
         g_mono = g_mode == kOutputMono;
         Fold(mix.data(), out.data(), kFrames, channels, g_mono);
