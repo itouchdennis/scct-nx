@@ -63,6 +63,8 @@ struct Settings {
     uint32_t ambient_occlusion = 0;  // screen space, from the scene's depth: 0 off, 1 SSAO, 2 GTAO
     bool reverb = true;              // the I3DL2 room reverb; scda.toml only
     bool logging = false;            // the port's full log and boot.txt in logs/, off: no log files; scda.toml only
+    bool audio_dump = false;         // the mixed sound as raw float frames in logs/audio.f32, to measure it; scda.toml
+                                     // only
     bool profiling = false;          // the Switch's perf diagnostics, with a log of measurements alone if logging is
                                      // off; scda.toml only
     bool async_shaders = true;       // a draw whose pipeline needs compiling is skipped until the build threads have it; scda.toml only

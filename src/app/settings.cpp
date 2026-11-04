@@ -148,6 +148,7 @@ void Load() {
     s.reverb = t["reverb"].value_or(s.reverb);
     s.logging = t["logging"].value_or(s.logging);
     s.profiling = t["profiling"].value_or(s.profiling);
+    s.audio_dump = t["audio_dump"].value_or(s.audio_dump);
     s.custom_textures = t["custom_textures"].value_or(s.custom_textures);
     s.dump_textures = t["dump_textures"].value_or(s.dump_textures);
     s.texture_dump_format = std::min(t["texture_dump_format"].value_or(s.texture_dump_format), 1u);
@@ -249,6 +250,7 @@ toml::table Table() {
                   {"reverb", s.reverb},
                   {"logging", s.logging},
                   {"profiling", s.profiling},
+                  {"audio_dump", s.audio_dump},
                   {"custom_textures", s.custom_textures},
                   {"dump_textures", s.dump_textures},
                   {"texture_dump_format", int64_t(s.texture_dump_format)},

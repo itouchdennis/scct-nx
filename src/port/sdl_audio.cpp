@@ -9,9 +9,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <future>
+#include <string>
 #include <thread>
 #include <vector>
 
+#include "app/app.h"
 #include "audio/output.h"
 #include "core/log.h"
 #include "port/port.h"
@@ -69,12 +71,23 @@ void Fold(const float* in, float* out, uint32_t frames, int channels, bool mono)
         need.assign(kLookAhead, 1.0f);
         at = 0;
     }
-    // SCDA_AUDIO_DUMP=file: the fold before the limiter as raw float frames, to measure the mix
-    static FILE* dump = [] {
+    // SCDA_AUDIO_DUMP=file, or audio_dump in scda.toml (logs/audio.f32): the fold before the limiter as raw float
+    // frames, to measure the mix; appended across relaunches, flushed once a second (each flush an SD card write)
+    static FILE* dump = [channels] {
         const char* p = std::getenv("SCDA_AUDIO_DUMP");
-        return p && *p ? std::fopen(p, "ab") : nullptr;  // appended across relaunches
+        std::string path = p && *p ? p : app::Get().audio_dump ? (port::HomeDir() / "logs" / "audio.f32").string() : "";
+        FILE* f = path.empty() ? nullptr : std::fopen(path.c_str(), "ab");
+        if (f) {
+            std::setvbuf(f, nullptr, _IOFBF, 1 << 20);
+            LOGI("audio: dumping the mix to %s (%d channels, float, %u Hz)", path.c_str(), channels, kRate);
+        }
+        return f;
     }();
-    if (dump && std::fwrite(out, sizeof(float), size_t(frames) * channels, dump)) std::fflush(dump);
+    static uint32_t dumped = 0;
+    if (dump && std::fwrite(out, sizeof(float), size_t(frames) * channels, dump) && (dumped += frames) >= kRate) {
+        std::fflush(dump);
+        dumped = 0;
+    }
     for (uint32_t f = 0; f < frames; f++) {
         float* frame = out + f * ch;
         float peak = 0.0f;
