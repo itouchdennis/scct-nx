@@ -462,7 +462,7 @@ int main(int argc, char** argv) {
     port::SetProfiling(profiling);
 #endif
     port::Init(argc, argv);
-    std::string log = app::Instance() > 1 ? "scda-" + std::to_string(app::Instance()) : "scda";
+    std::string log = app::Instance() > 1 ? "scct-" + std::to_string(app::Instance()) : "scct";
     logx::Init((app::ExeDir() / "logs").string(), log, port::Relaunched());
     port::Breadcrumb(("log open: " + logx::Path()).c_str());
     app::Load();
@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
 
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
-        port::Fatal("Splinter Cell: Double Agent", std::string("SDL failed to start: ") + SDL_GetError());
+        port::Fatal("Splinter Cell: Chaos Theory", std::string("SDL failed to start: ") + SDL_GetError());
         return 1;
     }
     g_apply_event = SDL_RegisterEvents(1);
@@ -484,7 +484,7 @@ int main(int argc, char** argv) {
     port::Breadcrumb("game found");
 
     app::Mode out = app::Output();
-    std::string title = "Tom Clancy's Splinter Cell: Double Agent";
+    std::string title = "Tom Clancy's Splinter Cell: Chaos Theory";
     if (app::Instance()) title += " [" + std::to_string(app::Instance()) + "]";
     Uint32 flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 #ifdef SCDA_SDL_VULKAN
@@ -508,7 +508,7 @@ int main(int argc, char** argv) {
     g_window = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, int(out.width),
                                 int(out.height), flags);
     if (!g_window) {
-        port::Fatal("Splinter Cell: Double Agent", std::string("The window could not be opened: ") + SDL_GetError());
+        port::Fatal("Splinter Cell: Chaos Theory", std::string("The window could not be opened: ") + SDL_GetError());
         return 1;
     }
     port::Breadcrumb("window open");
@@ -525,7 +525,7 @@ int main(int argc, char** argv) {
     std::string hdd = app::Instance() > 1 ? "hdd" + std::to_string(app::Instance()) : "hdd";
     port::Breadcrumb("boot");
     if (!kernel::Boot(std::move(game.xbe), IMAGE_XBE, game.dir.string(), (app::ExeDir() / hdd).string())) {
-        port::Fatal("Splinter Cell: Double Agent", "The game failed to start, see the log in the logs folder.");
+        port::Fatal("Splinter Cell: Chaos Theory", "The game failed to start, see the log in the logs folder.");
         return 1;
     }
 

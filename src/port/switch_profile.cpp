@@ -1,4 +1,4 @@
-// The perf branch's diagnostics on the Switch, while scda.toml's profiling is on; with logging off the log holds the
+// The perf branch's diagnostics on the Switch, while scct.toml's profiling is on; with logging off the log holds the
 // measurements alone (fps, frame time, the render thread, these), which full logging's every line would slow:
 // - every 10 s, each named thread's CPU time over the window and its preferred core, and the cores' sums: whether the
 //   game's thread shares its core with others
@@ -200,7 +200,7 @@ void WriteCounts(FILE* f, const char* what, const std::string& name, const std::
 
 // every name's counts of the run so far, as offsets into scda.elf; overwritten each window
 void WriteRun() {
-    FILE* f = std::fopen("sdmc:/switch/scda/logs/profile.txt", "w");
+    FILE* f = std::fopen("sdmc:/switch/scct/logs/profile.txt", "w");
     if (!f) return;
     std::fprintf(f, "# offsets into scda.elf (%u byte buckets), samples; module base %llX\n", kBucket,
                  (unsigned long long)g_base);

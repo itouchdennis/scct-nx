@@ -19,7 +19,7 @@ void LogSystem() {
     char date[32] = {};
     std::strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
     const char* kBuild = logx::Verbose() ? " (" SCDA_COMMIT ", debug)" : "";
-    LOGR("Splinter Cell: Double Agent XBE Recomp V%d%s, port (%s), %s", kVersion, kBuild, IMAGE_XBE, date);
+    LOGR("Splinter Cell: Chaos Theory XBE Recomp V%d%s, port (%s), %s", kVersion, kBuild, IMAGE_XBE, date);
     LOGR("Path: %s", ExeDir().string().c_str());
 #ifdef SCDA_CODE_OPT_NAME
     LOGR("Game code: %s", SCDA_CODE_OPT_NAME);

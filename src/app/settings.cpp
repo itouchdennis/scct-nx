@@ -1,4 +1,4 @@
-// scda.toml beside the exe
+// scct.toml beside the exe
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -49,7 +49,7 @@ Port ParsePort(const std::string& name, Port fallback) {
     return p.keyboard || p.pad >= 0 || name == "none" ? p : fallback;
 }
 
-std::filesystem::path File() { return ExeDir() / "scda.toml"; }
+std::filesystem::path File() { return ExeDir() / "scct.toml"; }
 
 // the Windows display language when the game has it, else English
 std::string SystemLanguage() {

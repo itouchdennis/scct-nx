@@ -1,6 +1,6 @@
 #pragma once
 // The part of Win32 that core/input.cpp reads the keyboard and mouse through, for builds without Windows. The keys keep
-// their virtual key codes (the bindings and scda.toml name them so); port/win32_input.cpp answers from SDL's state:
+// their virtual key codes (the bindings and scct.toml name them so); port/win32_input.cpp answers from SDL's state:
 // GetAsyncKeyState from the keyboard and mouse buttons, the cursor in window pixels, raw mouse motion as RAWINPUT the
 // event loop builds from SDL's relative motion and wheel. Clipping the cursor is SDL's relative mouse mode. The layout
 // is always the US one, which is how the bindings name their keys anyway.

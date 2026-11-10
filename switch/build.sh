@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Build the Switch homebrew NRO and stage an SD card layout:
 #
-#   <SD>/switch/scda/scda.nro
-#   <SD>/switch/scda/game/       the extracted disc: default.xbe, Default/, Media/, ...
-#   <SD>/switch/scda/scda.toml   settings, written by the game
-#   <SD>/switch/scda/logs/       the log
-#   <SD>/switch/scda/hdd/        saves
+#   <SD>/switch/scct/scct.nro
+#   <SD>/switch/scct/game/       the extracted disc: sc3.xbe, Default/, Media/, ...
+#   <SD>/switch/scct/scct.toml   settings, written by the game
+#   <SD>/switch/scct/logs/       the log
+#   <SD>/switch/scct/hdd/        saves
 #
 # Start it from hbmenu with title takeover (hold R while starting a game): applet mode leaves too little memory.
 #
@@ -13,14 +13,14 @@
 #   SCDA_GEN_DIR   generated code from tools/regen.sh (default generated/game; made here when missing)
 #   STAGE_GAME     1: also copy the extracted disc (SCDA_GAME_SRC, default assets/) into the staging folder; by
 #                  default only the NRO is staged and the disc is copied to the card once by hand
-#   SD_ROOT        staging SD root (default switch_sd/); a scda.nro already there that differs from the new one is
-#                  moved to <SD_ROOT>/BAK/scda_v<its version>.nro first, beside switch/ so it stays off the card
+#   SD_ROOT        staging SD root (default switch_sd/); a scct.nro already there that differs from the new one is
+#                  moved to <SD_ROOT>/BAK/scct_v<its version>.nro first, beside switch/ so it stays off the card
 #   BUILD_DIR      default build/switch-vk, build/switch for SCDA_GPU=gl
 #   SCDA_ICON      the NRO's hbmenu icon, a 256x256 JPEG (default switch/icon.jpg when it exists)
 #   SCDA_GPU       vk (default, Vulkan on mesa-switch's NVK), gl (OpenGL on switch-mesa) or null (draws nothing)
 #   SCDA_NVK_SDK   vk: the Mesa Horizon SDK's portlibs/switch (default build/nvk-sdk/opt/devkitpro/portlibs/switch,
 #                  where switch/nvk/build-nvk.sh installs it)
-#   (logging: off by default, "logging = true" in sdmc:/switch/scda/scda.toml writes the full log to logs/)
+#   (logging: off by default, "logging = true" in sdmc:/switch/scct/scct.toml writes the full log to logs/)
 #   JOBS           parallel compile jobs (default: by free memory, the generated files need ~1.5 GB each)
 #   SCDA_CODE_OPT  the recompiled game code's optimization: -O3 (default) or -O2, for comparing; a change rebuilds
 #                  all of it
@@ -67,25 +67,25 @@ print(d[size + offset + 0x3060:size + offset + 0x3070].split(b"\0")[0].decode("a
 PY
 }
 
-DEST="$SD/switch/scda"
+DEST="$SD/switch/scct"
 mkdir -p "$DEST/game"
-if [ -f "$DEST/scda.nro" ] && ! cmp -s "$BUILD/scda.nro" "$DEST/scda.nro"; then
-    old="$(nro_version "$DEST/scda.nro" || true)"
+if [ -f "$DEST/scct.nro" ] && ! cmp -s "$BUILD/scda.nro" "$DEST/scct.nro"; then
+    old="$(nro_version "$DEST/scct.nro" || true)"
     # 0.1.0: what every NRO before versioning carried
-    case "$old" in ""|0.1.0) old="unversioned_$(date -r "$DEST/scda.nro" +%Y%m%d-%H%M)" ;; *) old="v$old" ;; esac
-    bak="$SD/BAK/scda_$old.nro"
-    [ -e "$bak" ] && bak="$SD/BAK/scda_${old}_$(date -r "$DEST/scda.nro" +%Y%m%d-%H%M%S).nro"
+    case "$old" in ""|0.1.0) old="unversioned_$(date -r "$DEST/scct.nro" +%Y%m%d-%H%M)" ;; *) old="v$old" ;; esac
+    bak="$SD/BAK/scct_$old.nro"
+    [ -e "$bak" ] && bak="$SD/BAK/scct_${old}_$(date -r "$DEST/scct.nro" +%Y%m%d-%H%M%S).nro"
     mkdir -p "$SD/BAK"
-    mv "$DEST/scda.nro" "$bak"
-    echo "previous scda.nro kept as $bak"
+    mv "$DEST/scct.nro" "$bak"
+    echo "previous scct.nro kept as $bak"
 fi
-cp "$BUILD/scda.nro" "$DEST/scda.nro"
+cp "$BUILD/scda.nro" "$DEST/scct.nro"
 if [ "${STAGE_GAME:-0}" = 1 ] && [ -f "$GAME/default.xbe" ]; then
     # several GB: copy only what changed
     rsync -a --size-only --exclude '*.iso' "$GAME/" "$DEST/game/"
 fi
 echo
 echo "staged $DEST"
-echo "  scda.nro $(stat -c %s "$DEST/scda.nro") bytes, game/ $(du -sh "$DEST/game" | cut -f1)"
-echo "  copy scda.nro to <SD>/switch/scda/ and the extracted disc (default.xbe, Default/, Media/, ...) to"
-echo "  <SD>/switch/scda/game/, then start it from hbmenu with title takeover (hold R on a game)"
+echo "  scct.nro $(stat -c %s "$DEST/scct.nro") bytes, game/ $(du -sh "$DEST/game" | cut -f1)"
+echo "  copy scct.nro to <SD>/switch/scct/ and the extracted disc (sc3.xbe, Default/, Media/, ...) to"
+echo "  <SD>/switch/scct/game/, then start it from hbmenu with title takeover (hold R on a game)"
