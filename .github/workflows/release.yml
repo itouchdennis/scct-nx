@@ -4,9 +4,8 @@
 # existing tag to rewrite that release's notes and files from the current branch.
 name: release
 
+# scct-nx: by hand only, until Chaos Theory has its builders and a first release
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:

@@ -7,8 +7,8 @@
 #   switch    the Switch port compiles in the builder image (devkitPro, NVK), and the builder refuses what is not the game
 #   windows   build-nro-windows.bat starts on a real Windows, refuses a missing game, and stops with a message when the
 #             builder cannot run (the runner has no Linux containers)
-# image_symbols.h, which the port's sources include, is made from config/scda_v2.toml (tools/ci/symbols_header.py),
-# byte for byte what the recompiler writes, so the compile needs no default.xbe (tools/ci/check-build.sh).
+# image_symbols.h, which the port's sources include, is made from config/sc3.toml (tools/ci/symbols_header.py),
+# byte for byte what the recompiler writes, so the compile needs no sc3.xbe (tools/ci/check-build.sh).
 name: ci
 
 on:

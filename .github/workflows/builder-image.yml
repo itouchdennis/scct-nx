@@ -3,19 +3,9 @@
 # game ever passes through here. The game is added by each user, on their own computer (build-nro-docker.sh).
 name: builder image
 
+# scct-nx: by hand only, until Chaos Theory has a builder of its own. Pushed from here it would publish this
+# repository's image under scda-nx-builder, the name Double Agent's builders download.
 on:
-  push:
-    branches: [main]
-    paths:
-      - docker/**
-      - switch/**
-      - cmake/**
-      - config/**
-      - src/**
-      - tools/**
-      - CMakeLists.txt
-      - .dockerignore
-      - .github/workflows/builder-image.yml
   workflow_dispatch:
 
 permissions:

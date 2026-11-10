@@ -12,7 +12,7 @@ GPU="${2:-vk}"
 BUILD="${BUILD_DIR:-$REPO/build/ci-$TARGET-$GPU}"
 GEN="$BUILD/gen"
 
-python3 "$REPO/tools/ci/symbols_header.py" "$REPO/config/scda_v2.toml" "$GEN"
+python3 "$REPO/tools/ci/symbols_header.py" "$REPO/config/sc3.toml" "$GEN"
 args=(-S "$REPO" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DSCDA_CHECK_ONLY=ON -DSCDA_GEN_DIR="$GEN" -DSCDA_GPU="$GPU")
 targets=(scda)
 case "$TARGET" in
