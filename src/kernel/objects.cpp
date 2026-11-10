@@ -9,6 +9,8 @@ namespace kernel {
 
 struct Waiter {
     std::condition_variable cv;
+    bool any = false;                 // waits for any one of its objects
+    const Object* granted = nullptr;  // a synchronization event set while it waited, handed to it alone
 };
 
 namespace {
@@ -226,7 +228,12 @@ uint32_t Wait(const std::vector<ObjectRef>& objs, bool wait_all, int64_t timeout
         }
         ~Queued() { Remove(); }
     } queued{objs};
+    queued.w.any = !wait_all;
     for (;;) {
+        if (queued.w.granted) {
+            for (size_t i = 0; i < objs.size(); i++)
+                if (objs[i].get() == queued.w.granted) return kWait0 + uint32_t(i);
+        }
         if (wait_all) {
             bool all = std::all_of(objs.begin(), objs.end(), [&](const ObjectRef& o) { return o && Satisfied(*o, me); });
             if (all) {
@@ -269,9 +276,25 @@ uint32_t Wait(const std::vector<ObjectRef>& objs, bool wait_all, int64_t timeout
     }
 }
 
+// A synchronization (auto-reset) event set while a thread waits for it goes to the first such waiter and stays unset,
+// as NT's KeSetEvent hands it over: set and woken instead, a thread that came back to it first took it before the
+// waiter ran. A critical section's leave sets its event, so a thread that left and entered again in a loop (Chaos
+// Theory's loading screen) starved the thread waiting to enter, and the level never loaded.
+static bool HandOver(Object& o) {
+    if (o.notification || o.type != ObjType::Event) return false;
+    for (Waiter* w : o.waiters)
+        if (w->any && !w->granted) {
+            w->granted = &o;
+            w->cv.notify_one();
+            return true;
+        }
+    return false;
+}
+
 int32_t SetEvent(Object& o) {
     std::lock_guard<std::mutex> lock(g_dispatch);
     int32_t old = o.signal;
+    if (HandOver(o)) return old;
     SetSignal(o, 1);
     Wake(o);
     return old;

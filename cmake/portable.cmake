@@ -17,7 +17,12 @@ set(SCDA_GPU null CACHE STRING
     "renderer: vk (Vulkan 1.3 with shader objects), gl (OpenGL 4.3), or null (draws nothing, for testing the rest)")
 # the Switch's Vulkan: mesa-switch's static NVK, installed as a portlibs tree (../mesa-build/build-linux.sh)
 set(SCDA_NVK_SDK "" CACHE PATH "Switch, SCDA_GPU=vk: the Mesa Horizon SDK's portlibs/switch (lib/libvulkan.a)")
-set(SCDA_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/generated/game CACHE PATH "generated code of default.xbe")
+set(SCDA_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/generated/game CACHE PATH "generated code of the image")
+# the image: its recompiler config, its XBE in assets/ and the folder of its game patches (src/<dir>), which override
+# recompiled functions by address and so belong to that image alone
+set(SCDA_IMAGE_CONFIG config/sc3.toml CACHE STRING "the image's recompiler config")
+set(SCDA_IMAGE_XBE assets/sc3.xbe CACHE STRING "the image's XBE")
+set(SCDA_GAME_DIR src/sc3 CACHE STRING "the image's game patches")
 set(SCDA_PARTITIONS 128)
 
 file(GLOB RECOMP_CONFIGS CONFIGURE_DEPENDS config/*.toml)
@@ -44,11 +49,11 @@ elseif(NOT CMAKE_CROSSCOMPILING)
     add_custom_command(
         OUTPUT ${GEN}/codegen.stamp
         BYPRODUCTS ${GEN_SOURCES} ${GEN}/x86_recomp_shared.h ${GEN}/image_symbols.h
-        COMMAND xbe_recomp config/scda_v2.toml assets/default.xbe ${GEN}
+        COMMAND xbe_recomp ${SCDA_IMAGE_CONFIG} ${SCDA_IMAGE_XBE} ${GEN}
         COMMAND ${CMAKE_COMMAND} -E touch ${GEN}/codegen.stamp
-        DEPENDS xbe_recomp ${RECOMP_CONFIGS} ${CMAKE_CURRENT_SOURCE_DIR}/assets/default.xbe
+        DEPENDS xbe_recomp ${RECOMP_CONFIGS} ${CMAKE_CURRENT_SOURCE_DIR}/${SCDA_IMAGE_XBE}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Recompiling default.xbe"
+        COMMENT "Recompiling ${SCDA_IMAGE_XBE}"
         VERBATIM)
     add_custom_target(recompile DEPENDS ${GEN}/codegen.stamp)
 elseif(NOT EXISTS ${GEN}/image_symbols.h)
@@ -75,7 +80,7 @@ endif()
 
 # the host: what has no Windows parts as it is, the ported files and the port's own layer in src/port
 file(GLOB HOST_SOURCES CONFIGURE_DEPENDS src/*/*.cpp)
-list(FILTER HOST_SOURCES EXCLUDE REGEX "/src/(game|versus)/")
+list(FILTER HOST_SOURCES EXCLUDE REGEX "/src/(game|versus|sc3)/")
 # Windows only: the D3D12 renderer and what serves it, XAudio2, the runtime compiler, splash and handover windows,
 # the main window (src/port/main.cpp has the SDL one)
 list(FILTER HOST_SOURCES EXCLUDE REGEX
@@ -100,7 +105,7 @@ elseif(SCDA_GPU STREQUAL "vk")
 else()
     message(FATAL_ERROR "SCDA_GPU is vk, gl or null, not ${SCDA_GPU}")
 endif()
-file(GLOB GAME_SOURCES CONFIGURE_DEPENDS src/game/*.cpp)
+file(GLOB GAME_SOURCES CONFIGURE_DEPENDS ${SCDA_GAME_DIR}/*.cpp)
 
 set(IMGUI_SOURCES
     ${imgui_SOURCE_DIR}/imgui.cpp
@@ -204,8 +209,8 @@ if(SCDA_SWITCH AND NOT SCDA_CHECK_ONLY)
     endif()
 endif()
 # the xbe's SHA-1: the executable checks the game it finds is the release it was made from
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets/default.xbe)
-    file(SHA1 ${CMAKE_CURRENT_SOURCE_DIR}/assets/default.xbe xbe_sha1)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${SCDA_IMAGE_XBE})
+    file(SHA1 ${CMAKE_CURRENT_SOURCE_DIR}/${SCDA_IMAGE_XBE} xbe_sha1)
 else()
     set(xbe_sha1 "")
 endif()
