@@ -4,3 +4,12 @@
 /out/
 # tools/ci/check-build.sh output
 /build/
+# the game is yours, never the repository's: your disc's files, the code made from them, built NROs
+/assets/
+/generated/
+/switch_sd/
+*.iso
+*.xiso
+*.xbe
+*.nro
+*.elf
