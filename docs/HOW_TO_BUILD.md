@@ -5,9 +5,9 @@ from **your own, legally acquired copy** of the Xbox game. The scripts below do 
 of the game is downloaded or uploaded.
 
 > [!WARNING]
-> **Early work.** The game reaches its title screen; the menus, the missions and the switch between them are not
-> tested yet. The builder image the scripts download is published with the first release: until then, build it on
-> your computer with `SCCT_LOCAL=1` (Linux, takes long: it builds the Switch's Vulkan driver), or build by hand as the
+> **Early work.** On the Switch the game runs from the menus through the briefing into the first mission; much is not
+> tested yet. If the builder image the scripts download is not there yet, build it on your computer with
+> `SCCT_LOCAL=1` (Linux, takes long: it builds the Switch's Vulkan driver), or build by hand as the
 > [README](https://github.com/itouchdennis/scct-nx#readme) describes.
 
 **What you need**

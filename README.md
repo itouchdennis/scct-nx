@@ -13,8 +13,8 @@ reimplementation, the Vulkan renderer on NVK and the Switch layer all come from 
 > on a real Nintendo Switch by a human. What it builds on is credited below (see [Credits](#credits)).
 
 > [!WARNING]
-> **Early work.** On Linux the game boots to its title screen ("Press start"). The menus, the missions, the switch
-> between them, the sound and the Switch itself are not tested yet. See [Status](#status).
+> **Early work.** On the Switch the game runs from the menus through the briefing into the first mission. Much is
+> not tested yet. See [Status](#status).
 
 > [!IMPORTANT]
 > **You must own a legally acquired copy of the game.** This repository contains no game data, no assets and no code
@@ -37,8 +37,10 @@ respective owners.
 ## Status
 - [x] recompiler configuration for `sc3.xbe`, the campaign that the disc's `default.xbe` (a launcher) starts
 - [x] boots on Linux with Vulkan to the title screen
-- [ ] boots on the Switch
-- [ ] menus and a mission; menu to mission and back (relaunch)
+- [x] boots on the Switch
+- [x] menus, the briefing and into a mission (relaunch)
+- [x] the settings as an overlay (L + R + D-pad right)
+- [ ] a whole mission, back to the menu
 - [ ] sound, input, saves
 - [ ] the builder image and a first release
 
@@ -54,9 +56,9 @@ The builders do everything inside [Docker](https://www.docker.com/): your game s
 made there. [docs/HOW_TO_BUILD.md](docs/HOW_TO_BUILD.md) is the step-by-step guide.
 
 > [!NOTE]
-> The builder image the scripts download (`ghcr.io/itouchdennis/scct-nx-builder`) is published with the first
-> release. Until then, `SCCT_LOCAL=1 ./build-nro-docker.sh ...` builds it on your computer (Linux; it builds the
-> Switch's Vulkan driver, which takes long), or build by hand as below.
+> The scripts download the builder image `ghcr.io/itouchdennis/scct-nx-builder`, published from `main`. If it cannot
+> be downloaded, `SCCT_LOCAL=1 ./build-nro-docker.sh ...` builds it on your computer (Linux; it builds the Switch's
+> Vulkan driver, which takes long), or build by hand as below.
 
 - **Windows:** `build-nro-windows.bat`, double-click it and choose your `.iso` (untested on Windows so far).
 - **Linux:** `./build-nro-docker.sh "/path/to/your game.iso"`.
