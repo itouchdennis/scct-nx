@@ -220,17 +220,23 @@ void EndRow(const RowBox& box) {
 }
 
 // label left, arrows and value right, the row is the only nav stop
-int OptionRow(const char* label, const char* value) {
+// activated: A, Enter or a click on the row itself (not its arrows)
+int OptionRow(const char* label, const char* value, bool* activated = nullptr) {
     const ImGuiStyle& style = ImGui::GetStyle();
     RowBox box = MeasureRow();
     ImGui::PushID(label);
     int step = 0;
-    ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(box.row_w, box.row_h));
+    bool pressed = ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(box.row_w, box.row_h));
+    if (activated) *activated = pressed;
     if (ImGui::IsItemFocused()) {
         ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                                                   ImGui::GetColorU32(ImGuiCol_Header));
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft)) step = -1;
-        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight)) step = 1;
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) ||
+            ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft))
+            step = -1;
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight) ||
+            ImGui::IsKeyPressed(ImGuiKey_GamepadLStickRight))
+            step = 1;
     }
     RowLabel(box, label);
     ImGui::PushItemFlag(ImGuiItemFlags_NoNav | ImGuiItemFlags_ButtonRepeat, true);  // held arrows keep stepping
@@ -1110,6 +1116,50 @@ bool RowDrawn(const Row& r) {
     return true;
 }
 
+// the values listed by a row's A (the port's overlay), drawn as a popup over the panel
+const Row* g_list_row = nullptr;
+std::vector<std::string> g_list;
+int g_list_current = 0;
+bool g_list_open = false;
+
+void DrawRows(int page);
+
+void DrawChoices() {
+    if (g_list_open) {
+        ImGui::OpenPopup("##choices");
+        g_list_open = false;
+    }
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    float em = ImGui::GetFontSize();
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(em * 16, 0), ImVec2(em * 30, em * 20));
+    if (!ImGui::BeginPopup("##choices")) {
+        g_list_row = nullptr;
+        return;
+    }
+    if (g_list_row) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kHeading);
+        ImGui::TextUnformatted(Ui(g_list_row->label).c_str());
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        for (int i = 0; i < int(g_list.size()); i++) {
+            bool current = i == g_list_current;
+            ImGui::PushID(i);
+            if (ImGui::Selectable(Ui(g_list[size_t(i)]).c_str(), current)) {
+                rows::Choose(*g_list_row, i);
+                g_list_row = nullptr;
+                ImGui::CloseCurrentPopup();
+            }
+            if (current && ImGui::IsWindowAppearing()) {
+                ImGui::SetItemDefaultFocus();
+                ImGui::SetScrollHereY(0.5f);
+            }
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndPopup();
+}
+
 void DrawRows(int page) {
     size_t count = 0;
     const Row* list = rows::Page(page, &count);
@@ -1130,8 +1180,26 @@ void DrawRows(int page) {
             bool held = g_display_held && DisplayRow(r.id);
             bool greyed = Greyed(r.id);
             ImGui::BeginDisabled(greyed);
-            int step = OptionRow(r.label, Ui(RowText(r.id, 0, held ? g_display : Get())).c_str());
+            bool activated = false;
+            int step = OptionRow(r.label, Ui(RowText(r.id, 0, held ? g_display : Get())).c_str(), &activated);
             ImGui::EndDisabled();
+#ifndef _WIN32
+            // the port's overlay, as the game's own menu does: A lists the row's values, or steps a range or a
+            // display row (those wait for Apply)
+            if (activated && !greyed && !step) {
+                int current = 0;
+                std::vector<std::string> choices = DisplayRow(r.id) ? std::vector<std::string>{}
+                                                                    : rows::Choices(r, &current);
+                if (choices.size() > 2) {
+                    g_list_row = &r;
+                    g_list = std::move(choices);
+                    g_list_current = current;
+                    g_list_open = true;
+                } else {
+                    step = 1;
+                }
+            }
+#endif
             if (step && greyed) step = 0;
             if (step && DisplayRow(r.id)) HoldDisplay(r.id, step);
             else if (step) RowText(r.id, step);
@@ -1241,6 +1309,7 @@ void DrawPanel() {
         if (g_page == kLevelsPage) DrawLevels();
         else DrawRows(g_page);
         ImGui::EndChild();
+        DrawChoices();
         ImGui::Separator();
         ImGui::PushStyleColor(ImGuiCol_Text, kDim);
         const char* hint = "";
@@ -1248,6 +1317,11 @@ void DrawPanel() {
         else if (g_capture >= 0) hint = "Press a key or mouse button to bind, Escape cancels";
         else if (g_page == kKeyboardPage && g_hovered_box >= 0) hint = "Right click or Delete clears the key";
         else if (g_page == kLevelsPage) hint = "Up and Down select, Enter or a click loads the level, Escape closes";
+#ifndef _WIN32
+        else if (g_list_row) hint = "A picks the value, B goes back";
+        else
+            hint = "Left and Right or A change the value, L and R switch the page, B closes";
+#endif
         ImGui::TextUnformatted(Ui(hint, false).c_str());
         ImGui::PopStyleColor();
         float bw = em * 8;
