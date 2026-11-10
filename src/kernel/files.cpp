@@ -78,6 +78,20 @@ fs::path MatchCase(const fs::path& dir, const std::vector<std::string>& parts) {
 }
 
 struct File;
+// A host file's open stream, shared by all the handles of that file that it serves. The Switch's SD card refuses to
+// open a file a second time while it is open for writing, and the title opens one file many times at once (Chaos
+// Theory a sound bank in Z: once for each of its sounds), which ran out of the files the card keeps open: the
+// autosave could not create its file then and crashed. The mutex makes a handle's seek and its read or write one
+// step; last is the handle that moved the stream last.
+struct Stream {
+    FILE* fp = nullptr;
+    bool write = false;
+    std::mutex mu;
+    const File* last = nullptr;
+    ~Stream() {
+        if (fp) std::fclose(fp);
+    }
+};
 // the host files open now: a size asked for by path is taken through the open file, as the Switch keeps files open
 // for writing from being opened again
 std::mutex g_open_mu;
@@ -87,8 +101,8 @@ struct File : Object {
     fs::path host;
     std::string xbox;
     FILE* fp = nullptr;
-    // fp's owner: the handles of one host file share its stream when the host cannot open it twice (Open below)
-    std::shared_ptr<FILE> stream;
+    // fp's owner, shared by the handles of one host file (Open below)
+    std::shared_ptr<Stream> stream;
     const Disc::Entry* entry = nullptr;  // on the disc image instead of a host path
     bool dir = false;
     uint64_t pos = 0;
@@ -132,13 +146,15 @@ std::atomic<uint64_t> g_moved{0};
 // fp to pos for a read (io 1) or a write (2). A seek empties newlib's buffer: one before every call made each of the
 // title's writes an SD card write of its own, and each read refill its buffer. C wants one between a write and a
 // read all the same.
+// With the stream's mutex held.
 void SeekFor(File& f, uint64_t pos, int io) {
     uint64_t moved = g_moved.load();
     // a shared stream stands wherever its other handles left it
-    if (f.at == pos && f.io == io && f.moved == moved && f.stream.use_count() < 2) return;
+    if (f.at == pos && f.io == io && f.moved == moved && f.stream->last == &f) return;
     std::fseek(f.fp, long(pos), SEEK_SET);
     f.io = io;
     f.moved = moved;
+    f.stream->last = &f;
 }
 
 // perf diagnostics, while the port's profiler asks for them: what the title did with each file this window
@@ -228,7 +244,10 @@ uint64_t HostSize(const fs::path& p, FILE* fp) {
     {
         std::lock_guard lock(g_open_mu);
         for (File* f : g_open) {
-            if (f->host == p) return EndOf(f->fp, p);
+            if (f->host == p) {
+                std::lock_guard io(f->stream->mu);
+                return EndOf(f->fp, p);
+            }
         }
     }
     struct stat st{};
@@ -469,36 +488,59 @@ bool ReadGameFile(const std::string& xbox_path, std::vector<uint8_t>& out) {
 
 // exports
 
-// A host file opened for a handle: the Switch's SD card refuses to open a file a second time while it is open for
-// writing (Chaos Theory's autosave opened AutoSave.sav.tmp again and, refused, crashed on the missing handle). Then
-// the new handle shares the open stream, cut to nothing when the mode asks for a new file ("w+b").
+// A host file opened for a handle: through the stream another handle of the file holds open where there is one that
+// can do what this one asks (Stream above), else a new one. A new file ("w+b") the host refuses while it is open
+// takes the open stream too, cut to nothing.
+bool Writes(const char* mode) { return mode[0] != 'r' || std::strchr(mode, '+'); }
+
 void Open(File& f, const std::string& host, const char* mode, const char* alt = nullptr) {
+    auto share = [&](bool any) {
+        for (File* o : g_open) {
+            if (o->host != host || !o->stream || (!any && Writes(mode) && !o->stream->write)) continue;
+            f.stream = o->stream;
+            f.fp = o->fp;
+            g_moved++;
+            return true;
+        }
+        return false;
+    };
+    std::lock_guard lock(g_open_mu);
+    if (mode[0] != 'w' && share(false)) {
+        LOG_FIRST(8, "files: %s shares the stream another handle holds open", host.c_str());
+        return;
+    }
+    const char* used = mode;
     FILE* fp = std::fopen(host.c_str(), mode);
-    if (!fp && alt) fp = std::fopen(host.c_str(), alt);
+    int err = errno;
+    if (!fp && alt) fp = std::fopen(host.c_str(), used = alt);
     if (fp) {
-        f.stream.reset(fp, [](FILE* p) { std::fclose(p); });
+        f.stream = std::make_shared<Stream>();
+        f.stream->fp = fp;
+        f.stream->write = Writes(used);
         f.fp = fp;
         return;
     }
-    std::lock_guard lock(g_open_mu);
-    for (File* o : g_open) {
-        if (o->host != host || !o->stream) continue;
-        f.stream = o->stream;
-        f.fp = o->fp;
-        g_moved++;
-        if (mode[0] == 'w') {
-            std::fflush(f.fp);
-            std::error_code ec;
+    if (mode[0] == 'w' && share(true)) {
+        std::lock_guard io(f.stream->mu);
+        std::fflush(f.fp);
+        std::error_code ec;
 #ifdef _WIN32
-            fs::resize_file(host, 0, ec);
+        fs::resize_file(host, 0, ec);
 #else
-            if (ftruncate(fileno(f.fp), 0)) ec.assign(errno, std::generic_category());
+        if (ftruncate(fileno(f.fp), 0)) ec.assign(errno, std::generic_category());
 #endif
-            if (ec) LOG_FIRST(8, "files: %s could not be cut to nothing: %s", host.c_str(), ec.message().c_str());
-        }
-        LOG_FIRST(32, "files: %s shares the stream of a handle that holds it open", host.c_str());
+        if (ec) LOG_FIRST(8, "files: %s could not be cut to nothing: %s", host.c_str(), ec.message().c_str());
+        LOG_FIRST(32, "files: %s takes over the stream of a handle that holds it open", host.c_str());
         return;
     }
+    size_t streams = 0;
+    for (size_t i = 0; i < g_open.size(); i++) {
+        bool first = true;
+        for (size_t j = 0; j < i; j++) first &= g_open[j]->stream != g_open[i]->stream;
+        streams += first;
+    }
+    LOGW("files: %s (%s): %s; %zu handles hold %zu host files open", host.c_str(), mode, std::strerror(err),
+         g_open.size(), streams);
 }
 
 KERNEL_EXPORT(190, NtCreateFile, 9) {
@@ -689,6 +731,7 @@ KERNEL_EXPORT(219, NtReadFile, 8) {
     if (f->entry) {
         n = len ? DiscRead(*f->entry, pos, HostPtr(buf), len) : 0;
     } else {
+        std::lock_guard io(f->stream->mu);
         SeekFor(*f, pos, 1);
         n = len ? HostRead(f->fp, HostPtr(buf), len) : 0;
         f->at = n == len ? pos + n : ~0ull;  // short: at the end or failed, seek again next time
@@ -719,8 +762,12 @@ KERNEL_EXPORT(236, NtWriteFile, 8) {
         int64_t o = int64_t(R64(off));
         if (o >= 0) pos = uint64_t(o);
     }
-    SeekFor(*f, pos, 2);
-    size_t n = HostWrite(f->fp, HostPtr(buf), len);
+    size_t n;
+    {
+        std::lock_guard io(f->stream->mu);
+        SeekFor(*f, pos, 2);
+        n = HostWrite(f->fp, HostPtr(buf), len);
+    }
     f->at = n == len ? pos + n : ~0ull;
     Count(f->xbox, false, [&](FileStat& s) {
         s.writes++;
@@ -738,7 +785,12 @@ KERNEL_EXPORT(211, NtQueryInformationFile, 5) {
     auto f = FileFromHandle(h);
     if (!f) return kInvalidHandle;
     std::error_code ec;
-    uint64_t size = f->entry ? (f->dir ? 0 : f->entry->size) : f->dir ? 0 : HostSize(f->host, f->fp);
+    uint64_t size = 0;
+    if (f->entry) size = f->dir ? 0 : f->entry->size;
+    else if (f->fp) {
+        std::lock_guard io(f->stream->mu);
+        size = HostSize(f->host, f->fp);
+    } else if (!f->dir) size = HostSize(f->host, nullptr);
     std::memset(HostPtr(out), 0, len);
     switch (cls) {
         case 4: {  // FileBasicInformation
@@ -787,6 +839,7 @@ KERNEL_EXPORT(226, NtSetInformationFile, 5) {
         case 19:  // allocation
         case 20:  // end of file
             if (f->fp) {
+                std::lock_guard io(f->stream->mu);
                 std::fflush(f->fp);
 #ifdef _WIN32
                 fs::resize_file(f->host, R64(in), ec);
@@ -809,7 +862,16 @@ KERNEL_EXPORT(226, NtSetInformationFile, 5) {
             if (host.empty()) return kObjectPathNotFound;
             if (f->fp) std::fflush(f->fp);
             fs::rename(f->host, host, ec);
-            if (ec) return kAccessDenied;
+            if (ec) {
+                LOGW("NtSetInformationFile: rename %s to %s: %s", f->host.string().c_str(), host.c_str(),
+                     ec.message().c_str());
+                return kAccessDenied;
+            }
+            if (f->stream) {
+                std::lock_guard lock(g_open_mu);
+                for (File* o : g_open)
+                    if (o->stream == f->stream) o->host = host;
+            }
             f->host = host;
             break;
         }
