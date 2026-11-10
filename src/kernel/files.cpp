@@ -87,6 +87,8 @@ struct File : Object {
     fs::path host;
     std::string xbox;
     FILE* fp = nullptr;
+    // fp's owner: the handles of one host file share its stream when the host cannot open it twice (Open below)
+    std::shared_ptr<FILE> stream;
     const Disc::Entry* entry = nullptr;  // on the disc image instead of a host path
     bool dir = false;
     uint64_t pos = 0;
@@ -104,7 +106,7 @@ struct File : Object {
         if (fp) {
             std::lock_guard lock(g_open_mu);
             g_open.erase(std::remove(g_open.begin(), g_open.end(), this), g_open.end());
-            std::fclose(fp);
+            stream.reset();  // the last handle of a shared stream closes it
         }
         if (delete_on_close) {
             std::error_code ec;
@@ -132,7 +134,8 @@ std::atomic<uint64_t> g_moved{0};
 // read all the same.
 void SeekFor(File& f, uint64_t pos, int io) {
     uint64_t moved = g_moved.load();
-    if (f.at == pos && f.io == io && f.moved == moved) return;
+    // a shared stream stands wherever its other handles left it
+    if (f.at == pos && f.io == io && f.moved == moved && f.stream.use_count() < 2) return;
     std::fseek(f.fp, long(pos), SEEK_SET);
     f.io = io;
     f.moved = moved;
@@ -466,6 +469,38 @@ bool ReadGameFile(const std::string& xbox_path, std::vector<uint8_t>& out) {
 
 // exports
 
+// A host file opened for a handle: the Switch's SD card refuses to open a file a second time while it is open for
+// writing (Chaos Theory's autosave opened AutoSave.sav.tmp again and, refused, crashed on the missing handle). Then
+// the new handle shares the open stream, cut to nothing when the mode asks for a new file ("w+b").
+void Open(File& f, const std::string& host, const char* mode, const char* alt = nullptr) {
+    FILE* fp = std::fopen(host.c_str(), mode);
+    if (!fp && alt) fp = std::fopen(host.c_str(), alt);
+    if (fp) {
+        f.stream.reset(fp, [](FILE* p) { std::fclose(p); });
+        f.fp = fp;
+        return;
+    }
+    std::lock_guard lock(g_open_mu);
+    for (File* o : g_open) {
+        if (o->host != host || !o->stream) continue;
+        f.stream = o->stream;
+        f.fp = o->fp;
+        g_moved++;
+        if (mode[0] == 'w') {
+            std::fflush(f.fp);
+            std::error_code ec;
+#ifdef _WIN32
+            fs::resize_file(host, 0, ec);
+#else
+            if (ftruncate(fileno(f.fp), 0)) ec.assign(errno, std::generic_category());
+#endif
+            if (ec) LOG_FIRST(8, "files: %s could not be cut to nothing: %s", host.c_str(), ec.message().c_str());
+        }
+        LOG_FIRST(32, "files: %s shares the stream of a handle that holds it open", host.c_str());
+        return;
+    }
+}
+
 KERNEL_EXPORT(190, NtCreateFile, 9) {
     uint32_t handle_out = a[0], access = a[1], attrs = a[2], iosb = a[3], disposition = a[7], options = a[8];
     uint32_t root;
@@ -548,17 +583,15 @@ KERNEL_EXPORT(190, NtCreateFile, 9) {
     }
     if (!exists) fs::create_directories(fs::path(host).parent_path(), ec);
     FlushOpen(host);
-    FILE* fp = std::fopen(host.c_str(), mode);
-    if (!fp && std::string(mode) == "r+b") fp = std::fopen(host.c_str(), "rb");  // read only media
-    if (!fp) {
+    auto f = std::make_shared<File>();
+    Open(*f, host, mode, std::string(mode) == "r+b" ? "rb" : nullptr);  // read only media
+    if (!f->fp) {
         LOGW("NtCreateFile: cannot open %s", host.c_str());
         IoStatus(iosb, kAccessDenied, 0);
         return kAccessDenied;
     }
-    auto f = std::make_shared<File>();
     f->host = host;
     f->xbox = Normalize(name);
-    f->fp = fp;
     TrackOpen(f.get());
     f->delete_on_close = options & 0x1000;  // FILE_DELETE_ON_CLOSE
     W32(handle_out, NewHandle(f));
@@ -589,8 +622,8 @@ KERNEL_EXPORT(202, NtOpenFile, 6) {
     f->dir = fs::is_directory(host, ec);
     if (!f->dir) {
         FlushOpen(host);
-        if (WantsWrite(a[1])) f->fp = std::fopen(host.c_str(), "r+b");
-        if (!f->fp) f->fp = std::fopen(host.c_str(), "rb");
+        if (WantsWrite(a[1])) Open(*f, host, "r+b", "rb");
+        else Open(*f, host, "rb");
         TrackOpen(f.get());
         if (!f->fp) return kAccessDenied;
     }
