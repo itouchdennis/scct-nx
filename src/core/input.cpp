@@ -326,8 +326,31 @@ constexpr PadAction kVersusPadActions[] = {
     {"versus_pause", "PAUSE", 12},
     {"versus_push_to_talk", "PUSH TO TALK", -1, KeyEvent::PushToTalk},
 };
+// Chaos Theory: the console pad's controls by name, the game's own actions on them are its business. Its own ids keep
+// rebinds apart from Double Agent's.
+constexpr PadAction kSc3PadActions[] = {
+    {"sc3_a", "A", 0},
+    {"sc3_b", "B", 1},
+    {"sc3_x", "X", 2},
+    {"sc3_y", "Y", 3},
+    {"sc3_black", "BLACK (RB)", 4},
+    {"sc3_white", "WHITE (LB)", 5},
+    {"sc3_left_trigger", "LEFT TRIGGER", 6},
+    {"sc3_right_trigger", "RIGHT TRIGGER", 7},
+    {"sc3_dpad_up", "D-PAD UP", 8},
+    {"sc3_dpad_down", "D-PAD DOWN", 9},
+    {"sc3_dpad_left", "D-PAD LEFT", 10},
+    {"sc3_dpad_right", "D-PAD RIGHT", 11},
+    {"sc3_start", "START", 12},
+    {"sc3_back", "BACK", 13},
+    {"sc3_left_stick", "LEFT STICK CLICK", 14},
+    {"sc3_right_stick", "RIGHT STICK CLICK", 15},
+};
+constexpr bool kSc3 = std::string_view(IMAGE_XBE) == "sc3.xbe";
 constexpr std::span<const PadAction> kPadActions =
-    kVersus ? std::span<const PadAction>(kVersusPadActions) : std::span<const PadAction>(kStoryPadActions);
+    kVersus ? std::span<const PadAction>(kVersusPadActions)
+    : kSc3  ? std::span<const PadAction>(kSc3PadActions)
+            : std::span<const PadAction>(kStoryPadActions);
 constexpr size_t kPadCount = kPadActions.size();
 constexpr int kPadControls = 16;
 // a PlayStation controller's touchpad click on its left or right half, in the two wButtons bits XInput leaves unused

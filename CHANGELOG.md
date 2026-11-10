@@ -14,3 +14,9 @@ Not released yet.
   otherwise kept the level from ever loading.
 - Its own folder on the Switch, `sdmc:/switch/scct/` (`scct.nro`, `scct.toml`), beside Double Agent's.
 - The builders (Docker for Windows and Linux, `build-nro.sh` for Arch) and the guides for Chaos Theory.
+- Files: the SD card's open files no longer run out: the handles of one file share one stream (the autosave after
+  the briefing crashed).
+- The settings panel as an overlay: L + R + D-pad right on a controller (F10 on a keyboard) opens it, B closes it.
+  Display, graphics, general and controller settings as Double Agent's, the frame rate counter, and the controller's
+  buttons rebound by the Xbox controls; what needs Double Agent's game patches (field of view, gyro look, stick
+  sensitivity) waits for Chaos Theory's own.

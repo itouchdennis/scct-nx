@@ -159,6 +159,11 @@ are kept on the SD card (`shaders.vkb`) and load at once from then on.
 Logging is off by default. To write the full log (and `boot.txt`) to `sdmc:/switch/scct/logs/`, for a bug report
 for example, add `logging = true` to `sdmc:/switch/scct/scct.toml`. A crash still writes `crash.txt` either way.
 
+### Settings
+**L + R + D-pad right** on a controller opens the settings (F10 on a keyboard), **B** closes them: display,
+graphics, general and controller settings, the frame rate counter, and the controller's buttons. They are saved in
+`sdmc:/switch/scct/scct.toml`.
+
 ### On Linux
 The same sources build a Linux executable, the quick test bed: `cmake -S . -B build/linux-vk -G Ninja
 -DCMAKE_BUILD_TYPE=Release -DSCDA_GPU=vk && ninja -C build/linux-vk`, with the extracted disc in `assets/`. It

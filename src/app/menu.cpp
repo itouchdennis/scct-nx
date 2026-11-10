@@ -353,6 +353,18 @@ bool VersusHides(int id) {
            id == kShadowDistance || id == kShadowFilter || id == kTickRate || id == kInputDelay || IsGyroRow(id);
 }
 
+// Chaos Theory: the rows that Double Agent's game patches (src/game) carry, which it has not yet, go: field of view,
+// FMV scale, intros, the shadow and texture options, the mouse and keyboard, the stick sensitivities and the gyro's
+// look, co-op
+constexpr bool kSc3 = std::string_view(IMAGE_XBE) == "sc3.xbe";
+bool GameHides(int id) {
+    if (!kSc3) return false;
+    return id == kFov || id == kFmvScale || id == kSkipIntros || id == kShadowResolution || id == kShadowDistance ||
+           id == kShadowFilter || id == kTextureReplacement || id == kTextureDumping || id == kDumpFormat ||
+           id == kPadHorizontal || id == kPadVertical || id == kPadAimHorizontal || id == kPadAimVertical ||
+           id == kTickRate || id == kInputDelay || id == kJoinIp || IsGyroRow(id);
+}
+
 // what only the D3D12 renderer draws (Windows): the port's Vulkan and OpenGL renderers have no MSAA, SM3 features, soft
 // shadow filter, ambient occlusion or HDR, so their rows go, and settings.cpp keeps them off. The Switch has one screen,
 // always full screen; the button layout rows are the Switch's alone
@@ -918,6 +930,7 @@ bool PageShown(int page) {
 #ifdef SCDA_SWITCH
     if (page == kKeyboardPage) return false;  // no mouse or keyboard there
 #endif
+    if (kSc3 && page == kKeyboardPage) return false;
     size_t pads = 0;
     input::PadActions(&pads);
     if (page == kControllerPage) return pads > 0;
@@ -1088,13 +1101,26 @@ void MicrophoneRow(const char* label) {
     EndRow(box);
 }
 
+bool RowDrawn(const Row& r) {
+    if (r.kind == Kind::Value && VersusHides(r.id)) return false;
+#ifndef _WIN32
+    // the port's overlay: as the game's own menu shows them
+    if ((r.kind == Kind::Value || r.kind == Kind::Text) && (!rows::Shown(r) || GameHides(r.id))) return false;
+#endif
+    return true;
+}
+
 void DrawRows(int page) {
     size_t count = 0;
     const Row* list = rows::Page(page, &count);
     for (size_t i = 0; i < count; i++) {
         const Row& r = list[i];
-        if (r.kind == Kind::Value && VersusHides(r.id)) continue;
+        if (!RowDrawn(r)) continue;
         if (r.kind == Kind::Heading) {
+            // a heading over no rows goes with them
+            bool any = false;
+            for (size_t j = i + 1; j < count && list[j].kind != Kind::Heading && !any; j++) any = RowDrawn(list[j]);
+            if (!any) continue;
             Section(r.label);
         } else if (r.kind == Kind::Value && (r.id == kPlayer1 || r.id == kPlayer2)) {
             PlayerRow(r.label, r.id == kPlayer1 ? 0 : 1);
@@ -1267,8 +1293,15 @@ void DrawUi() {
     if (MenuOpen() || ConsoleOpen()) io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
     else io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     io.KeyRepeatRate = 0.1f;  // held arrows step ten times a second, ImGui's twenty is too fast for settings
-    // scale the font with the output height
+    // scale the font with the output height; the port's overlay makes its font at twice ImGui's size, and the
+    // Switch's screen is small for its height
+#ifdef SCDA_SWITCH
+    io.FontGlobalScale = io.DisplaySize.y / 960.0f;
+#elif defined(_WIN32)
     io.FontGlobalScale = std::max(1.0f, io.DisplaySize.y / 720.0f);
+#else
+    io.FontGlobalScale = std::max(0.5f, io.DisplaySize.y / 1440.0f);
+#endif
     if (ConsoleOpen()) DrawConsole();
     if (MenuOpen()) {
         PollCapture();
@@ -1334,7 +1367,8 @@ std::vector<std::string> Choices(const Row& row, int* current) {
 
 bool Shown(const Row& row) {
     std::lock_guard lock(UiLock());
-    bool hidden = row.id == kMicrophone || row.id == kPushToTalk || VersusHides(row.id) || PortHides(row.id);
+    bool hidden = row.id == kMicrophone || row.id == kPushToTalk || VersusHides(row.id) || PortHides(row.id) ||
+                  GameHides(row.id);
     return row.kind != Kind::Value || !hidden;
 }
 

@@ -18,6 +18,7 @@
 // the texture pack, captures, the settings panel.
 #include <SDL.h>
 #include <dxgiformat.h>
+#include <imgui.h>
 #include <pthread.h>
 
 #include <algorithm>
@@ -47,6 +48,7 @@
 #include "kernel/kernel.h"
 #include "kernel/memory.h"
 #include "port/gpu_common.h"
+#include "port/overlay.h"
 #include "port/port.h"
 #include "port/vk_device.h"
 #include "port/vk_shader.h"
@@ -114,6 +116,23 @@ VkSamplerAddressMode Address(uint32_t v) {
 }
 
 constexpr VkFormat kColourFormat = VK_FORMAT_B8G8R8A8_UNORM;  // guest memory's byte order: Sync copies it as it is
+
+// the overlay (port/overlay.h): ImGui's vertices in pixels, its font's alpha times their colour
+const char* const kUiHlsl = R"(
+cbuffer B : register(b1) { float4 xform; };
+Texture2D img : register(t0);
+SamplerState ls : register(s0);
+struct I { float2 v0 : ATTR0; float2 v1 : ATTR1; float4 v2 : ATTR2; };
+struct O { float4 p : SV_Position; float2 uv : TEXCOORD0; float4 col : COLOR0; };
+O vs(I i) {
+    O o;
+    o.p = float4(i.v0 * xform.xy + xform.zw, 0, 1);
+    o.uv = i.v1;
+    o.col = i.v2;
+    return o;
+}
+float4 psmain(O i) : SV_Target { return i.col * img.SampleLevel(ls, i.uv, 0); }
+)";
 
 struct Target {
     vk::Image img;
@@ -464,6 +483,15 @@ private:
     Assembled asm_;
 
     Resolved blit_vs_, blit_ps_;
+    // the overlay: its shaders, its font, and a frame's vertices, indices and transform in the ring
+    Resolved ui_vs_, ui_ps_;
+    vk::Image ui_font_;
+    bool ui_font_made_ = false;
+    struct UiFrame {
+        Alloc vb, ib, cb;
+    };
+    bool PrepareOverlay(const ImDrawData& d, UiFrame& f);
+    void DrawOverlay(const ImDrawData& d, const UiFrame& f);
     // SMAA: edges, blend weights, the blended frame, each the frame's size; the area and search lookups
     Resolved smaa_vs_[3], smaa_ps_[3];
     vk::Image smaa_[3], smaa_area_, smaa_search_;
@@ -1203,6 +1231,10 @@ void VkBackend::CreateBlit() {
     Request(blit_ps_, kBlitHlsl, vk::Stage::Pixel, "psmain");
     Await({&blit_vs_, &blit_ps_});
     if (!blit_vs_.obj || !blit_ps_.obj) LOGE("vk: the present pass did not compile");
+    Request(ui_vs_, kUiHlsl, vk::Stage::Vertex, "vs");
+    Request(ui_ps_, kUiHlsl, vk::Stage::Pixel, "psmain");
+    Await({&ui_vs_, &ui_ps_});
+    if (!ui_vs_.obj || !ui_ps_.obj) LOGE("vk: the overlay's shaders did not compile");
     SamplerDesc lin;
     lin.min = lin.mag = VK_FILTER_LINEAR;
     lin.wrap[0] = lin.wrap[1] = lin.wrap[2] = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -2400,6 +2432,117 @@ bool VkBackend::Swapchain() {
     return ok;
 }
 
+// the font once, then the frame's vertices, indices and transform into the ring
+bool VkBackend::PrepareOverlay(const ImDrawData& d, UiFrame& f) {
+    if (!ui_vs_.obj || !ui_ps_.obj || d.TotalVtxCount <= 0 || d.TotalIdxCount <= 0) return false;
+    if (!ui_font_made_) {
+        ui_font_made_ = true;
+        unsigned char* px = nullptr;
+        int w = 0, h = 0;
+        ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&px, &w, &h);
+        if (!px || !dev_.CreateImage(ui_font_, VK_FORMAT_R8G8B8A8_UNORM, uint32_t(w), uint32_t(h), 1, 1, 1, 0)) {
+            LOGE("vk: the overlay's font could not be made");
+            return false;
+        }
+        InitLayout(ui_font_);
+        Alloc a = Upload(size_t(w) * size_t(h) * 4, 16);
+        if (!a.cpu) return false;
+        std::memcpy(a.cpu, px, size_t(w) * size_t(h) * 4);
+        Outside();
+        CopyToImage(ui_font_, a, 0, 0, uint32_t(w), uint32_t(h), 1, 0);
+        LOGI("vk: overlay font %dx%d", w, h);
+    }
+    if (!ui_font_.image) return false;
+    size_t vbytes = size_t(d.TotalVtxCount) * sizeof(ImDrawVert), ibytes = size_t(d.TotalIdxCount) * sizeof(ImDrawIdx);
+    if (vbytes > kSegment / 4 || ibytes > kSegment / 4) return false;
+    f.vb = Upload(vbytes, 16);
+    f.ib = Upload(ibytes, 16);
+    for (int n = 0, v = 0, i = 0; n < d.CmdListsCount; n++) {
+        const ImDrawList* l = d.CmdLists[n];
+        std::memcpy(f.vb.cpu + size_t(v) * sizeof(ImDrawVert), l->VtxBuffer.Data, size_t(l->VtxBuffer.Size) * sizeof(ImDrawVert));
+        std::memcpy(f.ib.cpu + size_t(i) * sizeof(ImDrawIdx), l->IdxBuffer.Data, size_t(l->IdxBuffer.Size) * sizeof(ImDrawIdx));
+        v += l->VtxBuffer.Size;
+        i += l->IdxBuffer.Size;
+    }
+    // pixels to D3D's clip space, as the viewport is upside down
+    float xform[4] = {2.0f / d.DisplaySize.x, -2.0f / d.DisplaySize.y, -1.0f, 1.0f};
+    f.cb = Upload(sizeof(xform), size_t(ubo_align_));
+    std::memcpy(f.cb.cpu, xform, sizeof(xform));
+    return true;
+}
+
+// in the swap chain image's pass, over the frame, blended by alpha
+void VkBackend::DrawOverlay(const ImDrawData& d, const UiFrame& f) {
+    VkCommandBuffer cmd = Cmd();
+    uint32_t w = dev_.swap_w, h = dev_.swap_h;
+    const float zero[4] = {};
+    PostState({0, float(h), float(w), -float(h), 0.0f, 1.0f}, {{0, 0}, {w, h}}, zero);
+    VkBool32 on = VK_TRUE;
+    VkColorBlendEquationEXT eq{VK_BLEND_FACTOR_SRC_ALPHA, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_OP_ADD,
+                               VK_BLEND_FACTOR_ONE, VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA, VK_BLEND_OP_ADD};
+    fn.vkCmdSetColorBlendEnableEXT(cmd, 0, 1, &on);
+    fn.vkCmdSetColorBlendEquationEXT(cmd, 0, 1, &eq);
+    BindShaders(ui_vs_.obj, ui_ps_.obj);
+    VkVertexInputBindingDescription2EXT bind{VK_STRUCTURE_TYPE_VERTEX_INPUT_BINDING_DESCRIPTION_2_EXT};
+    bind.binding = 0;
+    bind.stride = sizeof(ImDrawVert);
+    bind.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bind.divisor = 1;
+    const VkFormat formats[3] = {VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R8G8B8A8_UNORM};
+    const uint32_t offsets[3] = {offsetof(ImDrawVert, pos), offsetof(ImDrawVert, uv), offsetof(ImDrawVert, col)};
+    VkVertexInputAttributeDescription2EXT attr[3];
+    uint32_t attrs = 0;
+    for (int r = 0; r < 3; r++) {
+        if (!ui_vs_.locations || ui_vs_.locations[r] < 0) continue;
+        attr[attrs] = {VK_STRUCTURE_TYPE_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_2_EXT};
+        attr[attrs].location = uint32_t(ui_vs_.locations[r]);
+        attr[attrs].binding = 0;
+        attr[attrs].format = formats[r];
+        attr[attrs].offset = offsets[r];
+        attrs++;
+    }
+    fn.vkCmdSetVertexInputEXT(cmd, 1, &bind, attrs, attr);
+    VkDescriptorBufferInfo ubo{f.cb.buffer, f.cb.off, 16};
+    VkDescriptorImageInfo img{VK_NULL_HANDLE, ui_font_.view, VK_IMAGE_LAYOUT_GENERAL};
+    VkDescriptorImageInfo smp{blit_linear_, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+    VkWriteDescriptorSet wr[3] = {};
+    for (auto& x : wr) x.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    wr[0].dstBinding = vk::kBindingUbo + 1;
+    wr[0].descriptorCount = 1;
+    wr[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    wr[0].pBufferInfo = &ubo;
+    wr[1].dstBinding = vk::kBindingTexture;
+    wr[1].descriptorCount = 1;
+    wr[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    wr[1].pImageInfo = &img;
+    wr[2].dstBinding = vk::kBindingSampler;
+    wr[2].descriptorCount = 1;
+    wr[2].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    wr[2].pImageInfo = &smp;
+    fn.vkCmdPushDescriptorSetKHR(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout_, 0, 3, wr);
+    VkDeviceSize voff = f.vb.off;
+    fn.vkCmdBindVertexBuffers(cmd, 0, 1, &f.vb.buffer, &voff);
+    fn.vkCmdBindIndexBuffer(cmd, f.ib.buffer, f.ib.off, sizeof(ImDrawIdx) == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32);
+    int vbase = 0, ibase = 0;
+    for (int n = 0; n < d.CmdListsCount; n++) {
+        const ImDrawList* l = d.CmdLists[n];
+        for (const ImDrawCmd& c : l->CmdBuffer) {
+            if (c.UserCallback) continue;
+            float x0 = std::max(c.ClipRect.x - d.DisplayPos.x, 0.0f), y0 = std::max(c.ClipRect.y - d.DisplayPos.y, 0.0f);
+            float x1 = std::min(c.ClipRect.z - d.DisplayPos.x, float(w)), y1 = std::min(c.ClipRect.w - d.DisplayPos.y, float(h));
+            if (x1 <= x0 || y1 <= y0) continue;
+            VkRect2D sc{{int32_t(x0), int32_t(y0)}, {uint32_t(x1 - x0), uint32_t(y1 - y0)}};
+            fn.vkCmdSetScissorWithCount(cmd, 1, &sc);
+            fn.vkCmdDrawIndexed(cmd, c.ElemCount, 1, uint32_t(ibase) + c.IdxOffset, int32_t(vbase + int(c.VtxOffset)), 0);
+        }
+        vbase += l->VtxBuffer.Size;
+        ibase += l->IdxBuffer.Size;
+    }
+    // the draws after this set their state afresh
+    fixed_ = false;
+    vin_set_ = false;
+}
+
 void VkBackend::Present(const Surface& front, bool pillarbox) {
     auto timed = Time(kPresent);
     const app::Settings& set = app::Get();
@@ -2439,6 +2582,10 @@ void VkBackend::Present(const Surface& front, bool pillarbox) {
     }
     Alloc cb = Upload(sizeof(c), size_t(ubo_align_));
     std::memcpy(cb.cpu, c, sizeof(c));
+    // the overlay's frame, its font and vertices uploaded before the swap chain's pass
+    UiFrame uif;
+    const ImDrawData* ui = dev_.swapchain ? port::OverlayFrame(dev_.swap_w, dev_.swap_h) : nullptr;
+    if (ui && !PrepareOverlay(*ui, uif)) ui = nullptr;
 
     uint32_t idx = 0;
     uint32_t sem = acquire_next_;
@@ -2512,6 +2659,7 @@ void VkBackend::Present(const Surface& front, bool pillarbox) {
             fixed_ = false;
             vin_set_ = false;
         }
+        if (ui) DrawOverlay(*ui, uif);
         fn.vkCmdEndRendering(Cmd());
         b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         b.dstAccessMask = 0;

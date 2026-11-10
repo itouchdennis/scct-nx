@@ -179,7 +179,9 @@ endif()
 target_include_directories(scda PRIVATE src src/port/include ${GEN})
 target_include_directories(scda SYSTEM PRIVATE ${imgui_SOURCE_DIR} ${GPU_INCLUDES})
 target_compile_options(scda PRIVATE -fno-strict-aliasing -Wno-unused-parameter)
-target_compile_definitions(scda PRIVATE SCDA_PORT $<$<BOOL:${SCDA_VERBOSE_LOG}>:SCDA_VERBOSE_LOG>
+# ImGui opens no links in a shell: newlib on the Switch has no waitpid or execvp
+target_compile_definitions(scda PRIVATE SCDA_PORT IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS
+    $<$<BOOL:${SCDA_VERBOSE_LOG}>:SCDA_VERBOSE_LOG>
     "SCDA_CODE_OPT_NAME=\"${SCDA_CODE_OPT}\""
     $<$<STREQUAL:${SCDA_GPU},gl>:SCDA_GL> $<$<STREQUAL:${SCDA_GPU},vk>:SCDA_VK>
     $<$<AND:$<STREQUAL:${SCDA_GPU},vk>,$<NOT:$<BOOL:${SCDA_SWITCH}>>>:SCDA_SDL_VULKAN>)

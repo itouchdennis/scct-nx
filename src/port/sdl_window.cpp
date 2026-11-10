@@ -22,6 +22,7 @@
 #include "gpu/backend.h"
 #include "image_symbols.h"
 #include "kernel/kernel.h"
+#include "port/overlay.h"
 #include "port/pads.h"
 #include "port/port.h"
 #include "port/win32_input.h"
@@ -213,7 +214,11 @@ void ApplyNow() {
 void HandleEvent(const SDL_Event& e) {
     switch (e.type) {
         case SDL_QUIT: g_quit = true; break;
-        case SDL_KEYDOWN: OnKey(e.key); break;
+        case SDL_KEYDOWN:
+            port::OverlayKey(e.key.keysym.scancode, true);
+            OnKey(e.key);
+            break;
+        case SDL_KEYUP: port::OverlayKey(e.key.keysym.scancode, false); break;
         case SDL_TEXTINPUT: OnText(e.text.text); break;
         case SDL_MOUSEMOTION:
             g_cursor_x = e.motion.x;
@@ -521,6 +526,7 @@ int main(int argc, char** argv) {
 #endif
 
     input::Init(Handle());
+    port::OverlayInit();
     input::LoadBindings();
     std::string hdd = app::Instance() > 1 ? "hdd" + std::to_string(app::Instance()) : "hdd";
     port::Breadcrumb("boot");
@@ -540,6 +546,7 @@ int main(int argc, char** argv) {
         if (int want = g_want_relative.exchange(-1); want >= 0 && g_focus)
             SDL_SetRelativeMouseMode(want ? SDL_TRUE : SDL_FALSE);
         port::UpdatePads();
+        port::OverlayPads();
         Watchdog();
 #ifdef __SWITCH__
         port::ServiceRelaunch();
