@@ -1,11 +1,22 @@
-# Builds the scda-nx builder image (docker/Dockerfile) and publishes it as ghcr.io/<owner>/scda-nx-builder. The image
+# Builds the scct-nx builder image (docker/Dockerfile) and publishes it as ghcr.io/<owner>/scct-nx-builder. The image
 # holds the toolchain, the Vulkan driver and this repository's sources only: no game data and no code made from the
 # game ever passes through here. The game is added by each user, on their own computer (build-nro-docker.sh).
 name: builder image
 
-# scct-nx: by hand only, until Chaos Theory has a builder of its own. Pushed from here it would publish this
-# repository's image under scda-nx-builder, the name Double Agent's builders download.
+# Its own name, scct-nx-builder: never scda-nx-builder, which Double Agent's builders download.
 on:
+  push:
+    branches: [main]
+    paths:
+      - docker/**
+      - switch/**
+      - cmake/**
+      - config/**
+      - src/**
+      - tools/**
+      - CMakeLists.txt
+      - .dockerignore
+      - .github/workflows/builder-image.yml
   workflow_dispatch:
 
 permissions:
@@ -29,7 +40,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Image name
         id: name
-        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/scda-nx-builder" >> "$GITHUB_OUTPUT"
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/scct-nx-builder" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .

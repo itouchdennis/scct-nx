@@ -99,14 +99,14 @@ jobs:
           mkdir -p /out /cache
           expect_fail "no game mounted at /game" docker/entrypoint.sh
           mkdir -p /game
-          expect_fail "has no default.xbe" docker/entrypoint.sh
-          head -c 4096 /dev/urandom > /game/default.xbe
-          expect_fail "not the release this port was tested with" docker/entrypoint.sh
+          expect_fail "has no sc3.xbe" docker/entrypoint.sh
+          head -c 4096 /dev/urandom > /game/sc3.xbe
+          expect_fail "not the release this port is made from" docker/entrypoint.sh
 
   windows:
     runs-on: windows-latest
     env:
-      SCDA_NO_PAUSE: "1"
+      SCCT_NO_PAUSE: "1"
     steps:
       - uses: actions/checkout@v4
       - name: A missing game is refused
