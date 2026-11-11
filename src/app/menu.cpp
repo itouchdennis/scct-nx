@@ -25,6 +25,7 @@
 #endif
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include "app/app.h"
 #include "app/panel_colors.h"
@@ -231,6 +232,10 @@ int OptionRow(const char* label, const char* value, bool* activated = nullptr) {
     if (ImGui::IsItemFocused()) {
         ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
                                                   ImGui::GetColorU32(ImGuiCol_Header));
+        // left and right are the row's: navigation would take a gamepad's over to the tabs
+        for (ImGuiKey key : {ImGuiKey_LeftArrow, ImGuiKey_RightArrow, ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadDpadRight,
+                             ImGuiKey_GamepadLStickLeft, ImGuiKey_GamepadLStickRight})
+            ImGui::SetKeyOwner(key, ImGui::GetItemID());
         if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow) || ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft) ||
             ImGui::IsKeyPressed(ImGuiKey_GamepadLStickLeft))
             step = -1;
