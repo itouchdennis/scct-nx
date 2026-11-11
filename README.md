@@ -162,7 +162,7 @@ Logging is off by default. To write the full log (and `boot.txt`) to `sdmc:/swit
 for example, add `logging = true` to `sdmc:/switch/scct/scct.toml`. A crash still writes `crash.txt` either way.
 
 ### Settings
-The port's settings are in the game's own options menu, as in Double Agent: **Options > Recomp Settings** (display,
+The port's settings are in the game's own options menu, as in Double Agent: **Options > Recomp Options** (display,
 graphics, general) and **Options > Controller** (the sticks, vibration and the buttons). A lists a row's values,
 Left and Right step them. They are saved in `sdmc:/switch/scct/scct.toml`; `settings_overlay = true` there adds the
 same settings as an overlay on **L + R + D-pad right** (F10 on a keyboard).

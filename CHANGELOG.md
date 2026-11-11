@@ -6,7 +6,7 @@ scct-nx starts from [scda-nx](https://github.com/itouchdennis/scda-nx) v0.4.9; i
 shared code.
 
 ## Unreleased
-- The settings in the game's options menu, as in Double Agent: Options > Recomp Settings and Options > Controller,
+- The settings in the game's options menu, as in Double Agent: Options > Recomp Options and Options > Controller,
   each with its sections, A lists a row's values (B goes back), Left and Right step them, a button row rebinds.
 - The overlay's rows change with the D-pad's left and right, and A lists their values. The overlay is off now that
   the game's menu has the settings: `settings_overlay = true` in `scct.toml` turns it on.

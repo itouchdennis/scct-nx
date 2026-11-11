@@ -99,7 +99,8 @@ constexpr uint32_t kLastButtonType = 4;
 constexpr uint32_t kLeft = 0x25;
 constexpr uint32_t kRight = 0x27;
 constexpr uint32_t kEscape = 0x1B;
-const char* const kCaptions[] = {"Recomp Settings", "Mouse and Keyboard", "Controller"};
+// short enough for one line of the options list in each language (the German "Recomp-Einstellungen" took two)
+const char* const kCaptions[] = {"RECOMP OPTIONS", "MOUSE AND KEYBOARD", "CONTROLLER"};
 constexpr int kListedModes[] = {0, 2};  // no mouse and keyboard rows for Chaos Theory yet
 constexpr int kCaptionCount = int(std::size(kListedModes));
 const std::vector<std::string_view> kSections[] = {

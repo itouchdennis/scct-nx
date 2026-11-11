@@ -19,6 +19,8 @@ struct Entry {
 constexpr Entry kEntries[] = {
     // options menu pages and the RECOMP SETTINGS sections
     {"RECOMP SETTINGS", {u"Paramètres Recomp", u"Recomp-Einstellungen", u"Impostazioni Recomp", u"Configuración de Recomp"}},
+    // Chaos Theory's options list wraps an entry longer than RECOMP SETTINGS onto a second line
+    {"RECOMP OPTIONS", {u"Options Recomp", u"Recomp-Optionen", u"Opzioni Recomp", u"Opciones Recomp"}},
     {"MOUSE AND KEYBOARD", {u"Souris et clavier", u"Maus und Tastatur", u"Mouse e tastiera", u"Ratón y teclado"}},
     {"CONTROLLER", {u"Manette", u"Controller", u"Controller", u"Controlador"}},
     {"GENERAL", {u"Général", u"Allgemein", u"Generale", u"General"}},
