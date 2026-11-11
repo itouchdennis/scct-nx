@@ -3,10 +3,10 @@
 
 cmake_minimum_required(VERSION 3.25)
 if(WIN32)
-    project(scda VERSION 0.1.1 LANGUAGES C CXX RC)
+    project(scda VERSION 0.3.0 LANGUAGES C CXX RC)
 else()
     # Linux and Nintendo Switch: cmake/portable.cmake
-    project(scda VERSION 0.1.1 LANGUAGES C CXX)
+    project(scda VERSION 0.3.0 LANGUAGES C CXX)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)

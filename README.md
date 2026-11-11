@@ -39,7 +39,7 @@ respective owners.
 - [x] boots on Linux with Vulkan to the title screen
 - [x] boots on the Switch
 - [x] menus, the briefing and into a mission (relaunch)
-- [x] the settings as an overlay (L + R + D-pad right)
+- [x] the settings in the game's options menu, gyro aiming
 - [ ] a whole mission, back to the menu
 - [ ] sound, input, saves
 - [ ] the builder image and a first release
