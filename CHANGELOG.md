@@ -5,6 +5,11 @@ yourself, from your own copy of the game ([docs/HOW_TO_BUILD.md](docs/HOW_TO_BUI
 scct-nx starts from [scda-nx](https://github.com/itouchdennis/scda-nx) v0.4.9; its changelog has the history of the
 shared code.
 
+## Unreleased
+- The settings in the game's options menu, as in Double Agent: Options > Recomp Settings and Options > Controller,
+  each with its sections, A lists a row's values (B goes back), Left and Right step them, a button row rebinds.
+- The overlay's rows change with the D-pad's left and right, and A lists their values.
+
 ## v0.1.1
 The first release (v0.1.0 was never released). On the Switch the game runs from the menus through the briefing into
 the first mission.
