@@ -164,8 +164,8 @@ for example, add `logging = true` to `sdmc:/switch/scct/scct.toml`. A crash stil
 ### Settings
 The port's settings are in the game's own options menu, as in Double Agent: **Options > Recomp Settings** (display,
 graphics, general) and **Options > Controller** (the sticks, vibration and the buttons). A lists a row's values,
-Left and Right step them. **L + R + D-pad right** (F10 on a keyboard) opens the same settings as an overlay anywhere.
-They are saved in `sdmc:/switch/scct/scct.toml`.
+Left and Right step them. They are saved in `sdmc:/switch/scct/scct.toml`; `settings_overlay = true` there adds the
+same settings as an overlay on **L + R + D-pad right** (F10 on a keyboard).
 
 ### On Linux
 The same sources build a Linux executable, the quick test bed: `cmake -S . -B build/linux-vk -G Ninja

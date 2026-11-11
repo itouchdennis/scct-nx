@@ -125,7 +125,7 @@ void OverlayInit() {
 }
 
 void OverlayPads() {
-    bool held = (Held(nullptr) & kCombo) == kCombo;
+    bool held = (Held(nullptr) & kCombo) == kCombo && app::Get().settings_overlay;
     if (held && !g_combo_held) {
         std::lock_guard lock(app::UiLock());
         app::ToggleMenu();

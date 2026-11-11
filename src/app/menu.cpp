@@ -365,15 +365,15 @@ bool VersusHides(int id) {
 }
 
 // Chaos Theory: the rows that Double Agent's game patches (src/game) carry, which it has not yet, go: field of view,
-// FMV scale, intros, the shadow and texture options, the mouse and keyboard, the stick sensitivities and the gyro's
-// look, co-op
+// FMV scale, intros, the shadow and texture options, the mouse and keyboard, co-op
 constexpr bool kSc3 = std::string_view(IMAGE_XBE) == "sc3.xbe";
 bool GameHides(int id) {
     if (!kSc3) return false;
+    // the sensitivities while aiming and the gyro only while aiming wait for its aiming state (src/sc3/camera.cpp)
     return id == kFov || id == kFmvScale || id == kSkipIntros || id == kShadowResolution || id == kShadowDistance ||
            id == kShadowFilter || id == kTextureReplacement || id == kTextureDumping || id == kDumpFormat ||
-           id == kPadHorizontal || id == kPadVertical || id == kPadAimHorizontal || id == kPadAimVertical ||
-           id == kTickRate || id == kInputDelay || id == kJoinIp || IsGyroRow(id);
+           id == kPadAimHorizontal || id == kPadAimVertical || id == kGyroAimOnly || id == kTickRate ||
+           id == kInputDelay || id == kJoinIp;
 }
 
 // what only the D3D12 renderer draws (Windows): the port's Vulkan and OpenGL renderers have no MSAA, SM3 features, soft

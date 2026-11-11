@@ -99,7 +99,10 @@ int VkOf(SDL_Scancode scan) {
 // a key went down: the settings panel, hide HUD and texture replacement binds, as main.cpp's HostKey
 bool HostKey(int vk, bool repeat) {
     if (repeat || app::ConsoleOpen()) return false;
-    if (input::HostKey(input::KeyEvent::SettingsPanel, vk)) app::ToggleMenu();
+    if (input::HostKey(input::KeyEvent::SettingsPanel, vk)) {
+        // the game's options menu has the settings; the overlay only where asked for
+        if (app::Get().settings_overlay || app::MenuOpen()) app::ToggleMenu();
+    }
     else if (!app::MenuOpen() && input::HostKey(input::KeyEvent::HideHud, vk)) app::g_hide_hud = !app::g_hide_hud;
     else if (!app::MenuOpen() && input::HostKey(input::KeyEvent::ToggleTextures, vk)) app::ToggleTextureReplacement();
     else return false;

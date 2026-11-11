@@ -62,6 +62,8 @@ struct Settings {
     bool tone_mapping = false;
     uint32_t ambient_occlusion = 0;  // screen space, from the scene's depth: 0 off, 1 SSAO, 2 GTAO
     bool reverb = true;              // the I3DL2 room reverb; scda.toml only
+    bool settings_overlay = false;   // the settings panel as an overlay on L + R + D-pad right (F10 on a keyboard)
+                                     // where the game's menu has no pages of them; the toml only
     bool logging = false;            // the port's full log and boot.txt in logs/, off: no log files; scda.toml only
     bool audio_dump = false;         // the mixed sound as raw float frames in logs/audio.f32, to measure it; scda.toml
                                      // only

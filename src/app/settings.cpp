@@ -146,6 +146,7 @@ void Load() {
     s.ambient_occlusion = std::min(t["ambient_occlusion"].value_or(s.ambient_occlusion), 2u);
     s.async_shaders = t["async_shaders"].value_or(s.async_shaders);
     s.reverb = t["reverb"].value_or(s.reverb);
+    s.settings_overlay = t["settings_overlay"].value_or(s.settings_overlay);
     s.logging = t["logging"].value_or(s.logging);
     s.profiling = t["profiling"].value_or(s.profiling);
     s.audio_dump = t["audio_dump"].value_or(s.audio_dump);
@@ -248,6 +249,7 @@ toml::table Table() {
                   {"ambient_occlusion", int64_t(s.ambient_occlusion)},
                   {"async_shaders", s.async_shaders},
                   {"reverb", s.reverb},
+                  {"settings_overlay", s.settings_overlay},
                   {"logging", s.logging},
                   {"profiling", s.profiling},
                   {"audio_dump", s.audio_dump},
