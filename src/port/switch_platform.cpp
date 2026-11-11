@@ -275,7 +275,9 @@ void Init(int argc, char** argv) {
         }
     }).detach();
     // the game handles home and the power button through the applet's own suspension; its threads keep the CPU
+    Breadcrumb("clocks");
     RaiseClocks();
+    Breadcrumb("clocks set");
     StartProfiler();
 }
 
