@@ -30,7 +30,7 @@ constexpr float kUnitsPerDegree = 65536.0f / 360.0f;
 
 // object: +0xC state frame, +0x20 name, +0x24 class; state frame: +0x1C state, as Double Agent's (unreal.cpp). Unlike
 // Double Agent's, Chaos Theory's names are indices into FName::Names (a TArray: +0 data, +4 count), its entries the
-// name as UTF-16 at +0xC
+// name as 8-bit text at +0xC (the lookup takes UTF-16 and keeps it narrowed)
 constexpr uint32_t kStateFrame = 0x0C, kName = 0x20, kClass = 0x24, kFrameState = 0x1C;
 constexpr uint32_t kNames = 0x5CD588;
 constexpr uint32_t kEntryText = 0xC;
@@ -46,7 +46,7 @@ std::string NameText(uint32_t index) {
     std::string out;
     if (!entry || !mem::IsCommitted(entry + kEntryText)) return out;
     for (uint32_t i = 0; i < kMaxName; i++) {
-        uint16_t c = R16(entry + kEntryText + i * 2);
+        uint8_t c = G<uint8_t>(entry + kEntryText + i);
         if (!c) break;
         out += c < 0x80 ? char(c) : '?';
     }
