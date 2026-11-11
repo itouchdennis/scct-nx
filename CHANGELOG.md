@@ -10,8 +10,8 @@ shared code.
   each with its sections, A lists a row's values (B goes back), Left and Right step them, a button row rebinds.
 - The overlay's rows change with the D-pad's left and right, and A lists their values. The overlay is off now that
   the game's menu has the settings: `settings_overlay = true` in `scct.toml` turns it on.
-- Gyro aiming and the stick's horizontal and vertical sensitivity, on the player camera as in Double Agent. The
-  sensitivities while aiming and gyro only while aiming wait for the game's aiming state.
+- Gyro aiming and the stick's horizontal and vertical sensitivity, on the player camera as in Double Agent, and
+  while aiming (the gun raised, the sniper scope) their own sensitivities and, if asked for, the gyro alone.
 
 ## v0.1.1
 The first release (v0.1.0 was never released). On the Switch the game runs from the menus through the briefing into

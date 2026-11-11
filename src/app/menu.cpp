@@ -369,11 +369,9 @@ bool VersusHides(int id) {
 constexpr bool kSc3 = std::string_view(IMAGE_XBE) == "sc3.xbe";
 bool GameHides(int id) {
     if (!kSc3) return false;
-    // the sensitivities while aiming and the gyro only while aiming wait for its aiming state (src/sc3/camera.cpp)
     return id == kFov || id == kFmvScale || id == kSkipIntros || id == kShadowResolution || id == kShadowDistance ||
            id == kShadowFilter || id == kTextureReplacement || id == kTextureDumping || id == kDumpFormat ||
-           id == kPadAimHorizontal || id == kPadAimVertical || id == kGyroAimOnly || id == kTickRate ||
-           id == kInputDelay || id == kJoinIp;
+           id == kTickRate || id == kInputDelay || id == kJoinIp;
 }
 
 // what only the D3D12 renderer draws (Windows): the port's Vulkan and OpenGL renderers have no MSAA, SM3 features, soft
